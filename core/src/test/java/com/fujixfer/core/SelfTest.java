@@ -1017,8 +1017,14 @@ public final class SelfTest {
             check("no whole JPEG in the copy -> null (fall back to the original)", eng.smallCopy(in, null) == null);
             check("gallery mode back after a failed copy", "1016 D226=0".equals(lastSet(cam, "D226")));
 
+            int logBefore = cam.log.size();
             File g = eng.download(ij, tmp(), listener(new AtomicInteger()));
             check("a download after the previews gets the original", sha(g).equals(sha(big)));
+            int sets;
+            synchronized (cam.log) {
+                sets = (int) cam.log.subList(logBefore, cam.log.size()).stream().filter("1016 D226=2"::equals).count();
+            }
+            check("one 0xD226 = 2 per file, not a second one after the transfer (" + sets + ")", sets == 1);
             check("after the download the camera is still in original-file mode", "1016 D226=2".equals(lastSet(cam, "D226")));
             eng.galleryMode();
             check("galleryMode() puts the gallery mode back, like XApp after an import", "1016 D226=0".equals(lastSet(cam, "D226")));

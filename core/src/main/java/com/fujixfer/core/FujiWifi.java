@@ -451,9 +451,14 @@ public final class FujiWifi {
         }
     }
 
+    /**
+     * After a transfer. XApp mode: nothing to send. This used to set 0xD226 = 2 again, the value
+     * {@link #beginRealSizes} had just set, so it was one useless command per file; the mode stays on originals
+     * and whatever comes next sets its own (next file: 2, end of the batch or listing: 0).
+     */
     public void endRealSizes() throws IOException {
         if (xapp) {
-            quiet(() -> s.setProp16(DPC_COMPRESS_SMALL, 2));
+            return;
         } else {
             pollEvents();
             quiet(() -> s.setProp16(DPC_CORRECT_FILE_SIZE, 0));
