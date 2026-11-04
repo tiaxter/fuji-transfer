@@ -55,6 +55,8 @@ class TransferService : Service() {
         const val ACTION_PAIR_BLE = "com.fujixfer.app.PAIR_BLE"
         const val ACTION_CONNECT_BLE = "com.fujixfer.app.CONNECT_BLE"
         const val PREF_PAIRING = "ble_pairing"
+        /** + listing key: the camera answers only the last of several queued requests (see TransferEngine.Options). */
+        private const val PREF_NO_QUEUE_PREFIX = "no_queue_"
         const val ACTION_DOWNLOAD = "com.fujixfer.app.DOWNLOAD"
         const val ACTION_CANCEL = "com.fujixfer.app.CANCEL"
         /** Fetch one original into the app cache to show it full size (long press on a photo). */
@@ -329,9 +331,13 @@ class TransferService : Service() {
         acquireLocks()
         try {
             listingKey = null
-            val eng = TransferEngine(makeConnector(), TransferEngine.Options())
-            engine = eng
+            val connector = makeConnector() // sets listingKey
             val key = listingKey
+            // a camera already seen answering only the last of several queued requests (X-M5): one at a time at once
+            val oneAtATime = key != null && prefs.getBoolean(PREF_NO_QUEUE_PREFIX + key, false)
+            if (oneAtATime) DebugLog.add("  elenco una richiesta alla volta: questa camera non accoda i comandi (visto in una connessione precedente)")
+            val eng = TransferEngine(connector, TransferEngine.Options().apply { listOneAtATime = oneAtATime })
+            engine = eng
             val previous = key?.let { loadListing(it) }
             if (!previous.isNullOrEmpty()) DebugLog.add("  elenco precedente: ${previous.size} file, controllo se è ancora valido")
             val started = System.currentTimeMillis()
@@ -389,6 +395,10 @@ class TransferService : Service() {
                 TransferState.unreadByDay = null
             }
             DebugLog.add("  elenco: ${list.size} file in ${(System.currentTimeMillis() - started) / 1000} s")
+            if (key != null && eng.listingRefusedQueue()) {
+                prefs.edit().putBoolean(PREF_NO_QUEUE_PREFIX + key, true).apply()
+                DebugLog.add("  ricordato: questa camera non accoda i comandi, la prossima volta elenco una richiesta alla volta")
+            }
             if (key != null) saveListing(key, list)
             TransferState.objects = list
             TransferState.sizesKnown = eng.listedWithRealSizes()
@@ -574,6 +584,7 @@ class TransferService : Service() {
         prefs.edit().putString(PREF_PAIRING, pairing.serialize()).apply()
         TransferState.publish()
         launchAndJoin(link, pairing.red)
+        link.relaxPriority()
         phase("rete della camera collegata")
         return wifiConnector(bluetoothHandoff = true)
     }

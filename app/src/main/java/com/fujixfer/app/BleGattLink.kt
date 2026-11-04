@@ -126,6 +126,11 @@ class BleGattLink(private val context: Context, private val device: BluetoothDev
             ?: throw IOException("Impossibile aprire la connessione Bluetooth")
         gatt = g
         await(connected, timeoutMs, "Camera non raggiungibile via Bluetooth")
+        // Shorter connection interval while setting up: the MTU, the services and the dozen GATT requests up to the
+        // Wi-Fi credentials go one after the other, each waiting for the next connection event. Back to balanced
+        // with relaxPriority() once the camera network is up (the link then only carries notifications).
+        val high = g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+        DebugLog.detail("BLE priorità alta: ${if (high) "chiesta" else "rifiutata dal telefono"}")
         if (g.requestMtu(FujiBle.MTU)) {
             try {
                 mtu.get(5, TimeUnit.SECONDS)
@@ -265,6 +270,17 @@ class BleGattLink(private val context: Context, private val device: BluetoothDev
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
             throw IOException("Interrotto")
+        }
+    }
+
+    /** Back to the balanced connection interval after the set-up (see connect). */
+    fun relaxPriority() {
+        val g = gatt ?: return
+        if (!isConnected) return
+        try {
+            g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+        } catch (e: SecurityException) {
+            // permission withdrawn meanwhile: the link stays as it is
         }
     }
 

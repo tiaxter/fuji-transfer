@@ -76,6 +76,9 @@ final class ObjectLister {
             fuji.trace("dimensione blocco scelta: " + batch);
         }
 
+        /** The camera answered only the last of several queued requests (PipelineRefused). */
+        boolean refusedQueue;
+
         void failed() {
             batch = best > 1 ? Math.max(1, best / 2) : 1;
             best = 0;
@@ -269,6 +272,7 @@ final class ObjectLister {
             // list this group one by one and stay at 1 from now on.
             int was = batch.batch;
             batch.failed();
+            batch.refusedQueue = true;
             fuji.trace("la camera non accoda " + was + " richieste (" + e.getMessage() + "): una alla volta");
             for (long h : group) {
                 try {

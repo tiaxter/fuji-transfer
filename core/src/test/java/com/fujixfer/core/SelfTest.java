@@ -1089,7 +1089,22 @@ public final class SelfTest {
             boolean right = list.size() == 13;
             for (ObjectInfo i : list) right &= i.filename.equals(cam.objects.get((int) i.handle - 1).name);
             check("all 13 listed on the same session, without a retry", right && retries.get() == 0);
+            check("the refused queue is reported, to remember it for this camera", eng.listingRefusedQueue());
             eng.close();
+
+            // next connection: the app remembered it, so nothing is queued at all
+            int queuedBefore = cam.queuedCommandsSeen.get();
+            FujiTcpLink.Options lo = new FujiTcpLink.Options();
+            lo.readTimeoutMs = 1500;
+            lo.connectTimeoutMs = 1000;
+            TransferEngine.Options eo = new TransferEngine.Options();
+            eo.listOneAtATime = true;
+            TransferEngine one = new TransferEngine(() -> FujiTcpLink.openSession(SocketFactory.getDefault(), "127.0.0.1",
+                    cam.port(), GUID, "selftest-phone", lo), eo);
+            check("listOneAtATime: all 13 listed, no request queued",
+                    one.listObjects(null).size() == 13 && cam.queuedCommandsSeen.get() == queuedBefore);
+            check("listOneAtATime: nothing new to remember", !one.listingRefusedQueue());
+            one.close();
         }
     }
 

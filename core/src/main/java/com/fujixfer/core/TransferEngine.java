@@ -37,6 +37,11 @@ public final class TransferEngine {
         public int maxAttemptsWithoutProgress = 8;
         public long backoffBaseMs = 500;
         public long backoffMaxMs = 8000;
+        /**
+         * Fuji Wi-Fi listing: one GetObjectInfo at a time from the start, without first trying several queued.
+         * For a camera already seen refusing the queue (the X-M5 answers only the last of several commands).
+         */
+        public boolean listOneAtATime;
     }
 
     public static final class CancelledException extends IOException {
@@ -58,7 +63,7 @@ public final class TransferEngine {
     /** Whether Fuji Wi-Fi listings use the real-size mode; decided once by timing (see ObjectLister). */
     private final Boolean[] listRealSizes = new Boolean[1];
     /** GetObjectInfo requests in flight together on Fuji Wi-Fi (tuned while listing). */
-    private final ObjectLister.Tuning listBatch = new ObjectLister.Tuning();
+    private final ObjectLister.Tuning listBatch;
     private int remapGeneration = -1;
     /**
      * Session and handle of the last object sized by {@link #sizeForDownload}: that GetObjectInfo already
@@ -104,6 +109,15 @@ public final class TransferEngine {
     public TransferEngine(Connector connector, Options options) {
         this.connector = connector;
         this.options = options;
+        this.listBatch = options.listOneAtATime ? new ObjectLister.Tuning(1) : new ObjectLister.Tuning();
+    }
+
+    /**
+     * True when this engine's listing ended up one request at a time because the camera did not answer queued
+     * ones (not because one at a time was asked for): worth remembering for this camera.
+     */
+    public boolean listingRefusedQueue() {
+        return !options.listOneAtATime && listBatch.refusedQueue;
     }
 
     public synchronized PtpSession session() throws IOException {

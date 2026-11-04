@@ -57,6 +57,12 @@ public final class FujiTcpLink implements PtpLink {
          */
         public int serviceWaitMs = 20000;
         /**
+         * Pause between two connection attempts while the camera refuses TCP (it is starting its transfer
+         * service). Was 1 s; a refusal costs nothing on the camera side, so knocking more often only gets the
+         * session open sooner once the service is up.
+         */
+        public int refusedRetryMs = 250;
+        /**
          * How long to wait for the handshake reply on one socket before closing it and opening a new one.
          * XApp does exactly this: CameraConnectModel.cameraOpen calls Open with a 5 s timeout and, on
          * failure, opens a fresh socket, for 30 s in total. Waiting longer on a single socket (as we did,
@@ -112,6 +118,7 @@ public final class FujiTcpLink implements PtpLink {
         long openDeadline = start + o.openWaitMs;
         IOException last = null;
         int failures = 0;
+        int refused = 0;
         int socketNo = 0;
         boolean[] told = {false}; // the waiting note is shown once, not once per socket
         while (true) {
@@ -127,12 +134,17 @@ public final class FujiTcpLink implements PtpLink {
                     // nothing listening (yet, or again): the camera is (re)starting its transfer service
                     closeQuietly(s);
                     last = e;
+                    refused++;
                     long now = System.currentTimeMillis();
-                    if (now + 1000 >= Math.max(serviceDeadline, openDeadline)) break;
-                    sleep(1000);
+                    if (now + o.refusedRetryMs >= Math.max(serviceDeadline, openDeadline)) break;
+                    sleep(o.refusedRetryMs);
                     continue;
                 }
                 socketNo++;
+                if (o.onTrace != null && refused > 0 && socketNo == 1) {
+                    o.onTrace.accept("porta 55740 rifiutata " + refused + " volte, aperta dopo "
+                            + (System.currentTimeMillis() - start) + " ms");
+                }
                 if (o.onTrace != null && socketNo > 1) o.onTrace.accept("nuovo socket n. " + socketNo);
                 String name = handshake(s, guid, friendlyName, o, deadline, told);
                 s.setSoTimeout(o.readTimeoutMs);
