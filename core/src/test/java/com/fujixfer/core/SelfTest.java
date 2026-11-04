@@ -36,6 +36,7 @@ public final class SelfTest {
         listingWithoutSlowMode();
         pipelinedListing();
         queueDroppingCamera();
+        cacheCheckAvoidsRaf();
         shortPartialReplies();
         downloadIntoChannel();
         viewerPreviews();
@@ -713,6 +714,50 @@ public final class SelfTest {
             for (ObjectInfo i : list3) right &= i.filename.equals(cam.objects.get((int) i.handle - 1).name);
             check("after a deletion the listing is re-read and correct", list3.size() == 61 && right);
             eng3.close();
+        }
+    }
+
+    static void cacheCheckAvoidsRaf() throws Exception {
+        System.out.println("== listing cache check reads a JPEG, not the old RAF at the bottom (1.6-2.0 s on the X-M5)");
+        try (FakeFujiCamera cam = new FakeFujiCamera()) {
+            for (int i = 1; i <= 10; i++) {
+                boolean raf = i % 2 == 1; // handle 1 is a RAF, 2 its JPEG, ...
+                cam.objects.add(new FakeFujiCamera.Obj(String.format("DSCF%04d.%s", i, raf ? "RAF" : "JPG"),
+                        raf ? 0xB103 : 0x3801, new byte[100 + i], 100 + i));
+            }
+            TransferEngine eng = engine(cam);
+            List<ObjectInfo> first = eng.listObjects(null);
+            eng.close();
+            cam.objectInfoHandles.clear();
+            TransferEngine eng2 = engine(cam);
+            List<ObjectInfo> again = eng2.listObjects(null, first, null);
+            List<Long> asked;
+            synchronized (cam.objectInfoHandles) {
+                asked = new java.util.ArrayList<>(cam.objectInfoHandles);
+            }
+            check("10 listed from the cache", again.size() == 10);
+            check("the check read handle 2 (JPG) and the newest, not handle 1 (RAF): " + asked,
+                    asked.equals(java.util.Arrays.asList(2L, 10L)));
+            eng2.close();
+
+            // only RAFs: nothing cheaper to read, the lowest one is checked as before
+            try (FakeFujiCamera raws = new FakeFujiCamera()) {
+                for (int i = 1; i <= 4; i++) {
+                    raws.objects.add(new FakeFujiCamera.Obj(String.format("DSCF%04d.RAF", i), 0xB103, new byte[100 + i], 100 + i));
+                }
+                TransferEngine r1 = engine(raws);
+                List<ObjectInfo> l1 = r1.listObjects(null);
+                r1.close();
+                raws.objectInfoHandles.clear();
+                TransferEngine r2 = engine(raws);
+                r2.listObjects(null, l1, null);
+                List<Long> askedRaw;
+                synchronized (raws.objectInfoHandles) {
+                    askedRaw = new java.util.ArrayList<>(raws.objectInfoHandles);
+                }
+                check("only RAFs: lowest and newest as before: " + askedRaw, askedRaw.equals(java.util.Arrays.asList(1L, 4L)));
+                r2.close();
+            }
         }
     }
 

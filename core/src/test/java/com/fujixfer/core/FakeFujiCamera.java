@@ -103,6 +103,8 @@ final class FakeFujiCamera implements Closeable {
     static final long PLACEHOLDER_SIZE = 100_000;
     final AtomicInteger getDeviceInfoCalls = new AtomicInteger();
     final AtomicInteger objectInfoCalls = new AtomicInteger();
+    /** Handles asked in GetObjectInfo, in order. */
+    final List<Long> objectInfoHandles = java.util.Collections.synchronizedList(new ArrayList<>());
     final AtomicInteger ignoredBeforeSetup = new AtomicInteger();
     final AtomicInteger downloadsNotOriginal = new AtomicInteger();
     final AtomicInteger thumbsWithoutInfo = new AtomicInteger();
@@ -373,6 +375,7 @@ final class FakeFujiCamera implements Closeable {
                             ? compressSmall == 2 : correctSize == 1;
                     if (op == Ptp.OC_GET_OBJECT_INFO) {
                         int calls = objectInfoCalls.incrementAndGet();
+                        objectInfoHandles.add(p[0]);
                         if (dropAfterObjectInfos > 0 && calls > dropAfterObjectInfos) {
                             dropAfterObjectInfos = 0;
                             s.setSoLinger(true, 0);

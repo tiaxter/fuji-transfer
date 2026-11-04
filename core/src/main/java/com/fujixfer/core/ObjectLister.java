@@ -340,7 +340,18 @@ final class ObjectLister {
             hi = Math.max(hi, h);
         }
         if (hi > n) return false;
-        for (long h : lo == hi ? new long[]{lo} : new long[]{lo, hi}) {
+        // The lowest handle is usually an old RAF, and the X-M5 takes 1.6-2.0 s to answer for those (4 Nov: handle 1,
+        // at every connection; the JPEG next to it, 0.1 s). A JPEG near the bottom shows a renumbering just as well.
+        long low = lo;
+        int looked = 0;
+        for (long h : new java.util.TreeSet<>(known.keySet())) {
+            if (looked++ >= 8) break;
+            if (!isRaw(known.get(h))) {
+                low = h;
+                break;
+            }
+        }
+        for (long h : low == hi ? new long[]{low} : new long[]{low, hi}) {
             try {
                 if (!s.getObjectInfo(h).sameFileAs(known.get(h))) return false;
             } catch (PtpResponseException e) {
@@ -349,6 +360,10 @@ final class ObjectLister {
             }
         }
         return true;
+    }
+
+    private static boolean isRaw(ObjectInfo i) {
+        return i.filename.toUpperCase(java.util.Locale.ROOT).endsWith(".RAF");
     }
 
     private static List<ObjectInfo> files(Map<Long, ObjectInfo> known, int n) {
