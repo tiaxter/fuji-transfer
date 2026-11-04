@@ -32,7 +32,12 @@ public final class TransferEngine {
     }
 
     public static final class Options {
-        public int chunkSize = 2 * 1024 * 1024;
+        /**
+         * Bytes asked per GetPartialObject. USB uses all of it: 20 MiB, as XApp does over USB
+         * (backgroundReceiveImageData); fewer requests, and the data still goes to disk as it arrives, so a drop
+         * loses nothing already received. Fuji Wi-Fi is capped at {@link FujiWifi#MAX_PARTIAL} (1 MiB, as XApp).
+         */
+        public int chunkSize = 20 * 1024 * 1024;
         /** Consecutive attempts without any new byte before giving up. */
         public int maxAttemptsWithoutProgress = 8;
         public long backoffBaseMs = 500;

@@ -14,8 +14,12 @@ import java.io.IOException
 object UsbCamera {
     const val FUJI_VENDOR_ID = 0x04CB
 
-    // Android's usbfs handles 16 KiB per bulkTransfer reliably on every kernel.
+    // Writes (commands, a few bytes) stay at 16 KiB per bulkTransfer.
     private const val BULK_CHUNK = 16 * 1024
+    // Reads: since Android 9 bulkTransfer is no longer cut at 16 KiB (minSdk is 29). One call per 256 KiB instead of
+    // per 16 KiB: 16 times fewer round trips through usbfs on a big file. A read still ends at the camera's short
+    // packet, so a smaller container comes back whole as before. To undo: set this back to BULK_CHUNK.
+    private const val BULK_READ = 256 * 1024
     private const val TIMEOUT_MS = 10_000
 
     fun findDevice(usb: UsbManager): UsbDevice? =
@@ -56,7 +60,8 @@ object UsbCamera {
             // PTP class request 0x66 = Device Reset; best effort, some bodies stall on it.
             conn.controlTransfer(0x21, 0x66, 0, iface.id, null, 0, 1000)
         }
-        val link = PacketLink(UsbBulk(conn, iface, inEp, outEp), BULK_CHUNK, TIMEOUT_MS, TIMEOUT_MS)
+        val link = PacketLink(UsbBulk(conn, iface, inEp, outEp), BULK_READ, TIMEOUT_MS, TIMEOUT_MS)
+        DebugLog.add("  USB: letture da ${BULK_READ / 1024} KiB, pacchetto massimo ${inEp.maxPacketSize} B")
         val session = PtpSession(link)
         try {
             session.openSession()
@@ -74,7 +79,7 @@ object UsbCamera {
         private val outEp: UsbEndpoint,
     ) : PacketLink.Bulk {
         override fun read(buf: ByteArray, maxLen: Int, timeoutMs: Int): Int {
-            val n = conn.bulkTransfer(inEp, buf, minOf(maxLen, BULK_CHUNK), timeoutMs)
+            val n = conn.bulkTransfer(inEp, buf, minOf(maxLen, BULK_READ), timeoutMs)
             if (n < 0) throw IOException("USB bulk-in fallito o in timeout")
             return n
         }
