@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Simbolo della simulazione pellicola, ricavato da XApp di Fujifilm (uso personale). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp"
+    android:height="20dp"
+    android:viewportWidth="20"
+    android:viewportHeight="20">
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M2.45,15.63h1v1.25h-1V15.63M16.55,15.63h1v1.25h-1V15.63M2.45,13.13h1v1.25h-1V13.13M16.55,13.13h1v1.25h-1V13.13M2.45,10.63h1v1.25h-1V10.63M16.55,10.63h1v1.25h-1V10.63M2.45,8.12h1v1.26h-1V8.12M16.55,8.12h1v1.26h-1V8.12M2.45,5.62h1v1.26h-1V5.62M16.55,5.62h1v1.26h-1V5.62M7.32,5h5.31v1.12H9.31v3.19h3.07v1.14H9.31v3.46h3.41V15h-5.4V5M2.45,3.12h1v1.25h-1V3.12M16.55,3.12h1v1.25h-1V3.12M1.11,17.78h17.78V2.22H1.11V17.78" />
+</vector>

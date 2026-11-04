@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material 3 roles, from the "Fuji Transfer · Material You" design. -->
+<resources>
+    <color name="md_background">@android:color/system_neutral1_10</color>
+    <color name="md_surface_lowest">@android:color/system_neutral1_0</color>
+    <color name="md_surface_low">@android:color/system_neutral1_50</color>
+    <color name="md_surface_container">@android:color/system_neutral2_50</color>
+    <color name="md_surface_high">@android:color/system_neutral2_100</color>
+    <color name="md_surface_highest">@android:color/system_neutral1_100</color>
+    <color name="md_on_surface">@android:color/system_neutral1_900</color>
+    <color name="md_on_surface_variant">@android:color/system_neutral2_700</color>
+    <color name="md_outline">@android:color/system_neutral2_500</color>
+    <color name="md_outline_variant">@android:color/system_neutral2_200</color>
+    <color name="md_primary">@android:color/system_accent1_600</color>
+    <color name="md_on_primary">@android:color/system_accent1_0</color>
+    <color name="md_primary_container">@android:color/system_accent1_100</color>
+    <color name="md_on_primary_container">@android:color/system_accent1_900</color>
+    <color name="md_secondary_container">@android:color/system_accent2_100</color>
+    <color name="md_on_secondary_container">@android:color/system_accent2_900</color>
+    <color name="md_tertiary_container">@android:color/system_accent3_100</color>
+    <color name="md_on_tertiary_container">@android:color/system_accent3_900</color>
+</resources>

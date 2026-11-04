@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Zoom and "show all" controls on the map (design: 16 dp corners, surface container high). -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="@color/md_surface_high" />
+    <corners android:radius="16dp" />
+</shape>

@@ -1,0 +1,16 @@
+# build
+.gradle/
+build/
+*/build/
+local.properties
+dist/
+
+# APK di XApp e archivi di lavoro (grandi, non sono codice nostro)
+apk/
+*.tgz
+
+# macOS
+.DS_Store
+
+# CA della rete locale per il Docker (configurazione della macchina)
+docker/certs/*.crt

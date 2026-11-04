@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- where the last touch on a filter chip landed (to tell the x from the rest of the chip) -->
+    <item name="chipTouchX" type="id" />
+    <!-- accessibility action "Rimuovi filtro" on the date and place chips -->
+    <item name="chipClear" type="id" />
+</resources>

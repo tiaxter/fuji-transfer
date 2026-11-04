@@ -1,0 +1,7 @@
+.git
+.gradle
+build
+*/build
+dist
+apk
+local.properties

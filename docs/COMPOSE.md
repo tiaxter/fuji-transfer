@@ -1,0 +1,43 @@
+# Fuji Transfer — migrazione a Jetpack Compose (4 nov 2026)
+
+Aggiunta al "Contesto": dal 4 nov la UI passa a Compose una schermata alla volta, restando in un'unica Activity con View per il resto.
+
+## Stato
+In Compose (`compileDebugKotlin` riuscito il 4 nov alle 20:30 su tutto il codice, radice unica e animazione del visore compresi; nessuna schermata ancora provata sul telefono):
+- Download: `DownloadScreen.kt`.
+- Connetti, Connessione in corso, Errore: `ConnectScreens.kt`.
+- Filtro Data: `DateScreen.kt`, strato sopra la galleria; il tasto indietro lo chiude per primo.
+
+- Galleria, parte sopra e sotto la griglia: `GalleryChrome.kt` (`GalleryTop`: barra, banner d'errore, chip dei filtri con la x come pulsante a parte, barra dei lavori; `GalleryBottom`: striscia download e barra di selezione). Dentro lo strato della galleria, sopra e sotto la griglia.
+- Griglia della galleria: `GalleryGrid.kt` (`LazyColumn` di intestazioni dei giorni e righe da tre celle; celle con selezione animata, scheletri che pulsano insieme, spunta, anello, badge). `MainActivity` tiene `rows` e `gridTick` (si incrementa quando cambia selezione, download o miniature: `refreshVisibleRows()`); `tileUi()` costruisce l'aspetto di una cella. Le miniature si chiedono (`Thumbs.request`) e si annullano (`Thumbs.cancel`) dagli effetti delle celle; `updateWantedDays()` usa le righe visibili che la griglia segnala.
+- Scheda dettagli sopra il visore: `DetailsSheet.kt` (`ModalBottomSheet`, una finestra a sé; creata direttamente da `AppRoot`). Il contenuto (`DetailsContent`) è lo stesso dell'anteprima offline.
+- Anteprima offline (nessuna foto da scaricare dalla camera): `PreviewScreen.kt`, strato sopra tutto (il tasto indietro lo chiude per primo).
+
+- Visore a schermo intero: `ViewerScreen.kt` (`ViewerScreen`: tre pagine che scorrono insieme, zoom con pizzico, trascinamento e doppio tocco, chiusura con trascinamento verticale, barra in alto, pannello di caricamento e striscia dei fotogrammi `ViewerStrip`) e `ViewerChrome.kt` (`ViewerBar`, `ViewerLoading`). Non è più un `Dialog`: è uno strato di `AppRoot` (`viewerHost`), così può condividere con la griglia la posizione delle celle. Un solo gestore di tocchi decide: foto ingrandita = si muove la foto; altrimenti il primo movimento sceglie scorrimento orizzontale (pagine) o verticale (chiusura). Il video è una `PlayerView` dentro `AndroidView`. Lo stato è `ViewerState` (in `Viewer.ui`); la logica di caricamento resta nella classe `Viewer` di `MainActivity`.
+- Barra ondulata: `WavyBar.kt` (Canvas; l'onda avanza solo se la barra è visibile e le animazioni di sistema sono attive).
+- Mappa: `MapScreen.kt` (stesso uso di prima: `MapScreen(activity, initial, onApply).open()`, `update()`, `closed`). Un `Dialog` con un'unica `ComposeView`; la `MapView` di MapLibre è dentro un `AndroidView` (ciclo di vita onCreate/onStart/onResume nella factory, onPause/onStop/onDestroy alla chiusura). Le zone sono cerchi Compose sopra la mappa, spostati dalla camera (`placeZones()` aggiorna `zonePos`, che i cerchi leggono nella fase di layout). Il pannello a tre stati è un `Box` con `offset` e un gesto verticale scritto a mano (`SheetLayer`): trascinamento, tocco per aprire/comprimere, scatto verso lo stato più vicino. Cerchi e chip nominati con il geocoder (`requestName`, una richiesta per cella).
+
+Restano View per costruzione solo la `MapView` e la `PlayerView` (dentro `AndroidView`). La mappa resta un `Dialog` con una `ComposeView` (`Dialog.composeOwners()`). Non resta nessun layout XML.
+
+## Gesti aggiunti
+- Selezione in blocco: tocco lungo su una cella e trascinamento (`pointerInput` di `GalleryGrid`, fase Initial: il tocco lungo che diventa trascinamento è della griglia, le celle hanno solo il tap). Sceglie l'intervallo dalla cella di partenza a quella sotto il dito (si può tornare indietro); se si parte da una già selezionata, toglie. Ai bordi alto e basso la griglia scorre da sola. Logica in `MainActivity` (`dragStart`, `dragOver`, `dragApply`; `flatTiles`/`flatIndex` si rifanno in `rebuildRows`).
+- Chiusura del visore con trascinamento verticale (foto non ingrandita): nel gestore di `ViewerScreen` (modo 3). La foto segue il dito e rimpicciolisce, lo sfondo nero e le barre svaniscono (la finestra è trasparente: stile `ViewerDialog`); oltre un sesto dell'altezza, o con uno scatto, esce dallo schermo, altrimenti torna indietro. Non è un'animazione "condivisa" verso la cella della galleria.
+
+## Come è fatto
+- `MainActivity` estende `ComponentActivity` e ha un'unica radice Compose: `setContent { FujiTheme { AppRoot() } }`. Non c'è più nessun layout XML. `AppRoot` impila degli strati (`Layer`, che compare salendo di 24 dp con dissolvenza e sparisce con dissolvenza): connessione, connessione in corso, errore, galleria; sopra la galleria download, filtro Data e anteprima offline (prendono i tocchi con `blockTouches()`); sopra tutto il visore (a finestra intera, barre di sistema comprese), la scheda dettagli (`ModalBottomSheet`) e i dialoghi (`AppDialogs`: conferme, registro, impostazioni Immich, come `AlertDialog` di Compose).
+- Quale strato è visibile lo decidono delle variabili di stato di `MainActivity` (`showConnect`, `showConnecting`, `showError`, `showGallery`, `showDownload`, `dateOpen`, `previewOpen`, `viewerHost`, `appDialog`), scritte da `onChanged()` e dalle azioni dell'utente. Il tasto indietro (`onBackPressed`) chiude per primo lo strato più alto.
+- Stato delle schermate: `mutableStateOf` in `MainActivity` (`downloadUi`, `connectUi`, `connectingUi`, `errorUi`, `dateSession`, `ssidText`, `passText`, `galleryTopUi`, `galleryBottomUi`, `rows`, `gridTick`, `detailsInfo`, `emptyText`), ricostruito da `updateDownload` / `updateConnect` / `updateConnecting` / `updateError` / `updateChips` / `updateBottom` / `rebuildRows`.
+- `FujiTheme.kt`: tema Material 3 che legge i colori `md_*` con `colorResource` (segue modo scuro e Material You).
+- `FujiComponents.kt`: `type()` (scala del testo, peso max 500), `FujiButton`, `GroupButton`, `FujiField`, `blockTouches()`.
+- Animazione del visore "alla Google Foto": la foto cresce dalla cella della griglia e torna nella cella della foto in primo piano alla chiusura (anche dopo un trascinamento). Le celle comunicano la loro posizione con `onGloballyPositioned` (`tileCoords` in `MainActivity`); `ViewerScreen` interpola finestra visibile, scala e centro tra la cella (ritagliata quadrata) e la foto intera (`SharedPicture`). Se la cella non è disegnata, la griglia scorre fino alla riga (`scrollGridTo`) e si aspettano tre frame; senza cella la foto si rimpicciolisce e svanisce.
+- Librerie: Compose BOM 2025.09.00, activity-compose 1.10.1, plugin `org.jetbrains.kotlin.plugin.compose` 2.2.10.
+
+## Build
+- `mergeExtDexDebug` ha fatto cadere il daemon Gradle nel Docker (memoria): più RAM alla VM (`colima start --memory 6`).
+- Solo la compilazione: `./docker-build.sh :app:compileDebugKotlin`.
+- Backup prima di ogni passo: `docs/backup-2026-11-04-compose/`, `-compose-2/`, `-compose-3/`, `-compose-4/`, `-compose-5/`, `-compose-6/`, `-compose-7/`, `-compose-8/`, `-compose-9/`, `-compose-10/`, `-compose-11/`, `-compose-12/`, `-compose-13/`.
+- Spostati (non cancellati) in `docs/removed-by-compose/`: le classi `ViewerPager`, `ZoomImageView`, `FilmStrip`, `WavyProgressBar`, `M3Switch`, `M3Spinner`, `SquareFrameLayout`, `IconTextView` e i layout `activity_main`, `dialog_preview`, `dialog_viewer`, `item_download`, `item_file`, `item_header`, `item_tile`, `item_tiles`, `screen_map`, `sheet_details`. Da lì si possono cancellare dopo aver provato l'app.
+- Risorse ancora in `res/` ma non più usate (da cancellare a mano, ricontrollando i riferimenti): stile `DetailsSheet`; drawable `bg_badge`, `bg_banner`, `bg_bottom_bar`, `bg_card`, `bg_card_log`, `bg_card_primary`, `bg_card_tertiary`, `bg_circle_error_container`, `bg_circle_outline`, `bg_circle_primary_container`, `bg_dot_primary`, `bg_fab`, `bg_group_end_tonal`, `bg_group_start`, `bg_input`, `bg_segment_end`, `bg_segment_start`, `bg_segmented`, `bg_selection_pill`, `bg_tag_outlined`, `bg_tile_inner_selected`, `bg_viewer_chip`, `bg_viewer_panel`, `ic_copy`, `progress_linear`, `progress_linear_thin` (più quelli rimasti senza riferimenti dopo lo spostamento dei layout).
+
+## Da provare sul telefono
+Tasto indietro (con ComponentActivity passa dal dispatcher), comparsa delle schermate, tastiera sui campi della connessione manuale, scorrimento del calendario (mese corrente in vista all'apertura), miniature nella lista download, anello del file in corso.

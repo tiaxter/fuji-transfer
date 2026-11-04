@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material 3 roles, from the "Fuji Transfer · Material You" design. -->
+<resources>
+    <color name="md_background">#0F1511</color>
+    <color name="md_surface_lowest">#0A0F0C</color>
+    <color name="md_surface_low">#171D19</color>
+    <color name="md_surface_container">#1B211D</color>
+    <color name="md_surface_high">#252B27</color>
+    <color name="md_surface_highest">#303632</color>
+    <color name="md_on_surface">#DFE4DD</color>
+    <color name="md_on_surface_variant">#C0C9C1</color>
+    <color name="md_outline">#8A938C</color>
+    <color name="md_outline_variant">#404943</color>
+    <color name="md_primary">#95D5B2</color>
+    <color name="md_on_primary">#003822</color>
+    <color name="md_primary_container">#0F5138</color>
+    <color name="md_on_primary_container">#B0F1CD</color>
+    <color name="md_secondary_container">#354B3F</color>
+    <color name="md_on_secondary_container">#CFE9D8</color>
+    <color name="md_tertiary_container">#244C5B</color>
+    <color name="md_on_tertiary_container">#C1E8FB</color>
+    <color name="md_error">#FFB4AB</color>
+    <color name="md_error_container">#93000A</color>
+    <color name="md_on_error_container">#FFDAD6</color>
+    <color name="log_camera">#8FD5AE</color>
+    <color name="log_wifi">#F2B866</color>
+    <color name="log_immich">#9BC2DE</color>
+    <color name="log_app">#8A938C</color>
+</resources>
