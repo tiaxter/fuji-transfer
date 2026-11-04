@@ -80,6 +80,10 @@ public final class FujiBle {
     public static final int AP_LAUNCHED_RESERVED_TRANSFER = 0x8003;
 
     public static final int ERR_CAMERA_BUSY_SHORT = 2;
+    /** Pause before repeating a launch request the camera answered with "busy for a moment" (XApp: 200 ms). */
+    static final int BUSY_RETRY_MS = 200;
+    /** Quick repeats (a few hundred ms apart each) before falling back to the slower check; about 6 s. */
+    static final int MAX_QUICK_BUSY_RETRIES = 15;
     /** XApp ORs this into the camera's number before storing and writing it back. */
     public static final long XAPP_IDENTIFIER = 0x20000000L;
 
@@ -462,6 +466,8 @@ public final class FujiBle {
         }
         int state = hasState ? c.readU16(CH_AP_STATE) : -1;
         log.trace("stato Wi-Fi iniziale 0x" + Integer.toHexString(state));
+        long requestAt = System.nanoTime();
+        final long firstRequestAt = requestAt;
         if (!launched(state)) {
             log.log("Chiedo alla camera di accendere il Wi-Fi…");
             c.write(CH_FUNCTION_LAUNCH_REQUEST, u16(LAUNCH_IN_CAMERA_VIEWING));
@@ -469,6 +475,8 @@ public final class FujiBle {
         if (!hasState) g.sleep(3000); // no way to observe it: give the access point time to come up
         long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
         int busyRetries = 0;
+        int quickRetries = 0;
+        boolean acceptedLogged = false;
         int quietPolls = 0;
         boolean sawLaunching = false;
         while (hasState && !launched(state)) {
@@ -480,6 +488,31 @@ public final class FujiBle {
             state = v != null && v.length >= 2 ? Ptp.u16(v, 0) : c.readU16(CH_AP_STATE);
             if (state != before) log.trace("stato Wi-Fi 0x" + Integer.toHexString(state) + (v != null ? " (notifica)" : ""));
             if (state == AP_LAUNCHING) sawLaunching = true;
+            long sinceRequest = (System.nanoTime() - requestAt) / 1_000_000L;
+            // A request the camera turns down comes back at once as a "not launched" notification (X-M5: 70-110 ms
+            // after the write, never seen after an accepted one). Right after the Bluetooth set-up it answers "busy
+            // for a moment" (error 2) to the first request, every time (4 Nov, 6 connections out of 6; later requests
+            // on the same link were accepted at the first try). Read the reason now and repeat after 200 ms, as XApp
+            // does, instead of waiting for three quiet polls (2.5 s) to notice.
+            if (v != null && state == AP_NOT_LAUNCHED && !sawLaunching && sinceRequest < 1000
+                    && quickRetries < MAX_QUICK_BUSY_RETRIES) {
+                int why = c.has(CH_STATE_ERROR_DETAILS) ? c.readU16(CH_STATE_ERROR_DETAILS) : 0;
+                if (why == ERR_CAMERA_BUSY_SHORT) {
+                    quickRetries++;
+                    log.trace("richiesta rifiutata subito dopo " + sinceRequest + " ms (camera occupata, errore 2): riprovo tra "
+                            + BUSY_RETRY_MS + " ms, tentativo " + (quickRetries + 1));
+                    g.sleep(BUSY_RETRY_MS);
+                    c.write(CH_FUNCTION_LAUNCH_REQUEST, u16(LAUNCH_IN_CAMERA_VIEWING));
+                    requestAt = System.nanoTime();
+                    quietPolls = 0;
+                    continue;
+                }
+            }
+            if (quickRetries > 0 && !acceptedLogged && v == null && sinceRequest >= 900) {
+                acceptedLogged = true;
+                log.trace("richiesta accettata al tentativo " + (quickRetries + 1) + ": la camera era occupata per più di "
+                        + (requestAt - firstRequestAt) / 1_000_000L + " ms dalla prima richiesta");
+            }
             boolean fellBack = state == AP_NOT_LAUNCHED && sawLaunching;
             quietPolls = state == before ? quietPolls + 1 : 0;
             if (fellBack || (state == AP_NOT_LAUNCHED && quietPolls >= 3)) {

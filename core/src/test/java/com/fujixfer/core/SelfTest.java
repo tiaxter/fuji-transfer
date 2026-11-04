@@ -511,6 +511,19 @@ public final class SelfTest {
         busy.busyAnswers = 2;
         FujiBle.launchWifi(busy, true, 5000, QUIET);
         check("camera busy for a moment -> request repeated (" + busy.launchRequests + ")", busy.launchRequests == 3);
+        FakeBleCamera quick = new FakeBleCamera(true);
+        quick.busyAnswers = 3;
+        quick.quietRefusal = true;
+        FujiBle.WifiCredentials qc = FujiBle.launchWifi(quick, true, 5000, QUIET);
+        check("refused at once (busy) -> repeated each time, then accepted (" + quick.launchRequests + " requests)",
+                quick.launchRequests == 4 && "FUJIFILM-X-T5-ABCD".equals(qc.ssid));
+        // the reason is read right after each refused request: "W E" and not "W S S E" (quiet polls first)
+        boolean immediate = true;
+        int lastW = quick.launchOps.lastIndexOf("W");
+        for (int i = 0; i < lastW; i++) {
+            if (quick.launchOps.get(i).equals("W")) immediate &= quick.launchOps.get(i + 1).equals("E");
+        }
+        check("refusal reason read at once, no quiet polls first " + quick.launchOps, immediate && lastW >= 3);
         FakeBleCamera silent = new FakeBleCamera(true);
         silent.deliverNotifications = false;
         check("works without notifications by polling the state", FujiBle.launchWifi(silent, true, 5000, QUIET).ssid.length() > 0);

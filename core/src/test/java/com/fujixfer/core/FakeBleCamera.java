@@ -66,6 +66,10 @@ class FakeBleCamera implements GattLink {
     boolean notificationsFail = false;
     // Wi-Fi launch
     int busyAnswers = 0;
+    /** Like the X-M5: a refused request comes back as one "not launched" notification, no "launching" first. */
+    boolean quietRefusal = false;
+    /** What the phone did on the Wi-Fi launch, in order: "W" request, "S" state read, "E" error details read. */
+    final List<String> launchOps = new ArrayList<>();
     int refuseWith = 0;
     boolean deliverNotifications = true;
     int launchRequests = 0;
@@ -146,6 +150,8 @@ class FakeBleCamera implements GattLink {
             }
             return v;
         }
+        if (c.equals(FujiBle.CH_AP_STATE)) launchOps.add("S");
+        if (c.equals(FujiBle.CH_STATE_ERROR_DETAILS)) launchOps.add("E");
         return values.getOrDefault(c, new byte[0]).clone();
     }
 
@@ -164,7 +170,8 @@ class FakeBleCamera implements GattLink {
         }
         if (c.equals(FujiBle.CH_FUNCTION_LAUNCH_REQUEST) && value.length == 2 && Ptp.u16(value, 0) == 3) {
             launchRequests++;
-            setAp(FujiBle.AP_LAUNCHING);
+            launchOps.add("W");
+            if (!(quietRefusal && busyAnswers > 0)) setAp(FujiBle.AP_LAUNCHING);
             if (busyAnswers > 0) {
                 busyAnswers--;
                 values.put(FujiBle.CH_STATE_ERROR_DETAILS, FujiBle.u16(FujiBle.ERR_CAMERA_BUSY_SHORT));
