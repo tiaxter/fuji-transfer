@@ -291,7 +291,27 @@ class TransferService : Service() {
 
     // ------------------------------------------------------------------ connect
 
+    /** Moments of the connection being made, for one summary line when the first files show; null after it. */
+    @Volatile private var phases: MutableList<Pair<String, Long>>? = null
+
+    private fun phase(name: String) {
+        phases?.add(name to System.currentTimeMillis())
+    }
+
+    /** "tempi della connessione: Bluetooth e abbinamento 1.2 s · … · totale 8.4 s", once per connection. */
+    private fun logPhases(last: String) {
+        val p = phases ?: return
+        phases = null
+        p.add(last to System.currentTimeMillis())
+        val parts = (1 until p.size).joinToString(" · ") { i ->
+            String.format(Locale.ROOT, "%s %.1f s", p[i].first, (p[i].second - p[i - 1].second) / 1000.0)
+        }
+        DebugLog.add(String.format(Locale.ROOT, "  tempi della connessione: %s · totale %.1f s",
+            parts, (p.last().second - p.first().second) / 1000.0))
+    }
+
     private fun connect(label: String, makeConnector: () -> TransferEngine.Connector) {
+        phases = mutableListOf("inizio" to System.currentTimeMillis())
         cancelRequested = false
         engine?.close()
         engine = null
@@ -325,6 +345,7 @@ class TransferService : Service() {
             val list = try {
                 eng.listObjects(listener(), previous, object : TransferEngine.ListingListener {
                     override fun onPartial(soFar: List<ObjectInfo>, done: Int, total: Int) {
+                        logPhases("primo elenco")
                         if (!groupsTried) {
                             groupsTried = true
                             days.load(eng, total)
@@ -386,6 +407,7 @@ class TransferService : Service() {
                 stopSelf()
                 return
             }
+            logPhases("errore")
             DebugLog.add("eccezione: $e")
             setStatus("Connessione non riuscita: ${e.message}", error = true)
             teardown()
@@ -542,6 +564,7 @@ class TransferService : Service() {
         DebugLog.add("Abbinamento salvato: " + (stored?.let { "${if (it.red) "RED" else "legacy"} ${it.name} ${it.address}" } ?: "nessuno"))
         val phone = phoneName()
         val (link, pairing) = if (pairNew) pairNewCamera(phone) else connectKnownCamera(stored, phone)
+        phase("Bluetooth e abbinamento")
         if (cancelRequested) throw TransferEngine.CancelledException()
         blePairing = pairing
         TransferState.cameraName = pairing.name.ifEmpty { "Camera" }
@@ -551,6 +574,7 @@ class TransferService : Service() {
         prefs.edit().putString(PREF_PAIRING, pairing.serialize()).apply()
         TransferState.publish()
         launchAndJoin(link, pairing.red)
+        phase("rete della camera collegata")
         return wifiConnector(bluetoothHandoff = true)
     }
 
@@ -656,6 +680,7 @@ class TransferService : Service() {
     private fun launchAndJoin(link: BleGattLink, red: Boolean) {
         TransferState.connectStep = 2
         val c = FujiBle.launchWifi(link, red, 25_000, bleLog)
+        phase("Wi-Fi acceso dalla camera")
         if (cancelRequested) throw TransferEngine.CancelledException()
         setStatus("Mi collego al Wi-Fi ${c.ssid}… (conferma la richiesta di Android se compare)")
         // Like XApp (WiFiHandOverService): always the exact name + BSSID, retried as is. A request without the
@@ -793,9 +818,11 @@ class TransferService : Service() {
                 val now = System.currentTimeMillis()
                 // in the file: every change (at most one a second while only the signal moves)
                 val w = nc.transportInfo as? android.net.wifi.WifiInfo
+                if (w != null) lastWifi = w
                 val caps = nc.toString().replace(Regex("SignalStrength: -?\\d+"), "")
                 if (caps != lastCaps || now - lastCapsLog >= 1000) {
-                    DebugLog.detail("rete della camera, capacità: segnale ${w?.rssi} dBm, collegamento ${w?.linkSpeed} Mbit/s, " +
+                    DebugLog.detail("rete della camera, capacità: segnale ${w?.rssi} dBm, collegamento ${w?.linkSpeed} Mbit/s " +
+                        "(ricezione ${w?.rxLinkSpeedMbps}, trasmissione ${w?.txLinkSpeedMbps}), " +
                         "${w?.frequency} MHz" + (if (caps != lastCaps) " · $nc" else ""))
                     lastCaps = caps
                     lastCapsLog = now
@@ -833,6 +860,26 @@ class TransferService : Service() {
     }
 
     private var localOnlyWatch: Any? = null
+
+    /** Last Wi-Fi details Android gave for the camera network (from onCapabilitiesChanged). */
+    @Volatile private var lastWifi: android.net.wifi.WifiInfo? = null
+
+    /**
+     * The camera link as Android describes it: band, standard, speeds in both directions, signal. Android reports
+     * the speeds it negotiated, not what goes through; values it does not know come as -1.
+     */
+    private fun wifiLinkSummary(): String {
+        val w = lastWifi ?: return "dati del collegamento Wi-Fi non disponibili"
+        val std = if (Build.VERSION.SDK_INT >= 30) when (w.wifiStandard) {
+            android.net.wifi.ScanResult.WIFI_STANDARD_LEGACY -> "802.11a/b/g"
+            android.net.wifi.ScanResult.WIFI_STANDARD_11N -> "802.11n"
+            android.net.wifi.ScanResult.WIFI_STANDARD_11AC -> "802.11ac"
+            android.net.wifi.ScanResult.WIFI_STANDARD_11AX -> "802.11ax"
+            else -> "standard ${w.wifiStandard}"
+        } else "standard ?"
+        return "Wi-Fi della camera: ${w.frequency} MHz, $std, ricezione ${w.rxLinkSpeedMbps} Mbit/s, " +
+            "trasmissione ${w.txLinkSpeedMbps} Mbit/s, segnale ${w.rssi} dBm"
+    }
     @Volatile private var netUpAt = 0L
 
     /**
@@ -940,6 +987,7 @@ class TransferService : Service() {
             val session = FujiTcpLink.openSession(
                 net.socketFactory, CAMERA_HOST, FujiTcpLink.DEFAULT_PORT, guid, name, options, fujiOptions, progress,
             )
+            phase("sessione PTP e galleria")
             val f = session.fujiWifi()
             val mode = if (f?.isXapp == true) "XApp (ClientState 20)" else "classico (ClientState ${f?.clientMode()})"
             DebugLog.add("  sessione Fuji pronta: modo $mode, stato camera ${f?.cameraState()}, ${f?.objectCount()} oggetti")
@@ -989,10 +1037,15 @@ class TransferService : Service() {
         TransferState.batchBytesDone = 0
         var ok = 0
         var failed = 0
+        if (wifiNetwork != null) DebugLog.add("  " + wifiLinkSummary())
+        val batchStart = System.nanoTime()
+        var batchBytes = 0L
+        var batchTransfer = 0L
         try {
             for ((i, listed) in wanted.withIndex()) {
                 if (cancelRequested) break
                 runPendingPreviews() // the viewer open during a batch: its previews between two files
+                val fileStart = System.nanoTime()
                 TransferState.batchIndex = i + 1
                 TransferState.progressName = listed.filename
                 TransferState.progressDone = 0
@@ -1009,6 +1062,10 @@ class TransferService : Service() {
                     markDone(info)
                     TransferState.batchBytesDone += info.size
                     ok++
+                    val st = eng.lastStats()
+                    batchBytes += st.bytes
+                    batchTransfer += st.nanos
+                    logFileStats(info, st, System.nanoTime() - fileStart)
                 } catch (e: TransferEngine.CancelledException) {
                     break
                 } catch (e: IOException) {
@@ -1018,6 +1075,13 @@ class TransferService : Service() {
             }
         } finally {
             eng.galleryMode() // as XApp after an import: the listing and thumbnails go on in gallery mode
+            val total = System.nanoTime() - batchStart
+            if (ok > 0 && total > 0) {
+                DebugLog.add(String.format(Locale.ROOT,
+                    "  lotto: %d file, %.1f MB in %.1f s (%.2f MB/s); trasferimento %.1f s, il resto (dimensioni, salvataggio, anteprime) %.1f s",
+                    ok, batchBytes / 1e6, total / 1e9, batchBytes / 1e6 / (total / 1e9), batchTransfer / 1e9,
+                    (total - batchTransfer) / 1e9))
+            }
             TransferState.busy = false
             TransferState.progressName = ""
             val msg = when {
@@ -1029,6 +1093,21 @@ class TransferService : Service() {
             updateNotification(msg, 0, 0, force = true)
             if (ok > 0) ImmichSync.schedule(this) // runs when the phone is back on a normal network
         }
+    }
+
+    /**
+     * One line per downloaded file: speed of the transfer itself, how long the camera waited before each piece,
+     * time spent writing, and what the file cost outside the transfer (size request, media store).
+     */
+    private fun logFileStats(info: ObjectInfo, st: TransferEngine.Stats, wallNanos: Long) {
+        if (st.nanos <= 0 || st.bytes <= 0) return
+        val sec = st.nanos / 1e9
+        DebugLog.add(String.format(Locale.ROOT,
+            "  %s: %.1f MB in %.1f s (%.2f MB/s); %d pezzi, attesa della camera prima dei dati %.2f s (%.0f ms a pezzo), " +
+                "scrittura %.2f s; fuori dal trasferimento %.2f s%s",
+            info.filename, st.bytes / 1e6, sec, st.bytes / 1e6 / sec, st.chunks, st.waitNanos / 1e9,
+            if (st.chunks > 0) st.waitNanos / 1e6 / st.chunks else 0.0, st.writeNanos / 1e9,
+            (wallNanos - st.nanos) / 1e9, if (st.retries > 0) ", ${st.retries} ripresa/e dopo caduta" else ""))
     }
 
     private fun listener() = object : TransferEngine.Listener {

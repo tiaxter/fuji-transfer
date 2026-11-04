@@ -175,6 +175,10 @@ public final class SelfTest {
             check("two retries happened", retries.get() == 2);
             long wasted = cam.dataBytesSent.get() - raf.length;
             check("resume: re-sent < 1 chunk per drop (wasted=" + wasted + ")", wasted <= 2L * 2 * 1024 * 1024);
+            TransferEngine.Stats st = eng.lastStats();
+            check("stats: bytes " + st.bytes + ", " + st.chunks + " pieces, " + st.retries + " retries",
+                    st.bytes == raf.length && st.chunks >= raf.length / FujiWifi.MAX_PARTIAL && st.retries == 2
+                            && st.nanos > 0 && st.waitNanos > 0 && st.writeNanos > 0 && st.waitNanos < st.nanos);
             eng.close();
         }
     }
@@ -1036,11 +1040,11 @@ public final class SelfTest {
         synchronized (wire) {
             for (String l : wire) {
                 if (l.startsWith("1016 D22E=1 ") && l.contains("-> OK")) modes = true;
-                if (l.startsWith("101B ") && l.matches(".* in \\d+ ms, \\d+ B")) timed = true;
+                if (l.startsWith("101B ") && l.matches(".* in \\d+ ms, \\d+ B, dati dopo \\d+ ms")) timed = true;
             }
         }
         check("wire trace: property values sent (" + wire.size() + " lines)", modes);
-        check("wire trace: time and bytes of each GetPartialObject", timed);
+        check("wire trace: time, bytes and wait before the data of each GetPartialObject", timed);
     }
 
     static ObjectInfo named(List<ObjectInfo> list, String name) {

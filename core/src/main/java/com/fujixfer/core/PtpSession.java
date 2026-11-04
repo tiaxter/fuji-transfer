@@ -43,6 +43,16 @@ public final class PtpSession implements Closeable {
      */
     public static volatile java.util.function.Consumer<String> wire;
 
+    /**
+     * Time from the command leaving the phone to the first data container of the last transaction, in ns; -1 when
+     * it had no data phase. For a GetPartialObject it is how long the camera took before sending (download stats).
+     */
+    private volatile long lastFirstDataNanos = -1;
+
+    public long lastFirstDataNanos() {
+        return lastFirstDataNanos;
+    }
+
     // ------------------------------------------------------------------ core transaction
 
     /**
@@ -81,7 +91,9 @@ public final class PtpSession implements Closeable {
         try {
             Response r = transactOnce(opcode, params, dataOut, counted);
             long bytes = sink == null ? r.data.length : count[0];
-            w.accept(what + " -> " + Ptp.rcName(r.code) + " in " + ms(t0) + " ms" + (bytes > 0 ? ", " + bytes + " B" : ""));
+            long first = lastFirstDataNanos;
+            w.accept(what + " -> " + Ptp.rcName(r.code) + " in " + ms(t0) + " ms" + (bytes > 0 ? ", " + bytes + " B" : "")
+                    + (bytes > 0 && first >= 0 ? ", dati dopo " + first / 1_000_000 + " ms" : ""));
             return r;
         } catch (IOException | RuntimeException e) {
             w.accept(what + " -> ERRORE dopo " + ms(t0) + " ms" + (count[0] > 0 ? " (" + count[0] + " B ricevuti)" : "")
@@ -125,6 +137,8 @@ public final class PtpSession implements Closeable {
             System.arraycopy(dataOut, 0, data, Ptp.HEADER_SIZE, dataOut.length);
             link.write(data, 0, data.length);
         }
+        long sent = System.nanoTime();
+        lastFirstDataNanos = -1;
 
         ByteArrayOutputStream buffered = null;
         byte[] hdr = new byte[Ptp.HEADER_SIZE];
@@ -138,6 +152,7 @@ public final class PtpSession implements Closeable {
             long payload = len - Ptp.HEADER_SIZE;
             switch (type) {
                 case Ptp.TYPE_DATA: {
+                    if (lastFirstDataNanos < 0) lastFirstDataNanos = System.nanoTime() - sent;
                     if (len == 0xFFFFFFFFL) throw new IOException("Unbounded data container not supported");
                     OutputStream dst = sink;
                     if (dst == null) {

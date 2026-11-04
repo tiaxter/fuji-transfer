@@ -69,6 +69,38 @@ public final class TransferEngine {
     private long sizedSize = -1;
     private String sizedIdentity = "";
 
+    /**
+     * Where the time of the last {@link #download(ObjectInfo, FileChannel, Listener)} went: total, waiting for the
+     * camera to start each piece, writing to the phone's storage. Retries and their pauses are in the total.
+     */
+    public static final class Stats {
+        /** Bytes added to the file by this download (a resumed file counts only the new part). */
+        public long bytes;
+        public long nanos;
+        public long waitNanos;
+        public long writeNanos;
+        public int chunks;
+        public int retries;
+
+        Stats copy() {
+            Stats c = new Stats();
+            c.bytes = bytes;
+            c.nanos = nanos;
+            c.waitNanos = waitNanos;
+            c.writeNanos = writeNanos;
+            c.chunks = chunks;
+            c.retries = retries;
+            return c;
+        }
+    }
+
+    private Stats stats = new Stats();
+
+    /** Statistics of the last download (a copy). */
+    public synchronized Stats lastStats() {
+        return stats.copy();
+    }
+
     public TransferEngine(Connector connector, Options options) {
         this.connector = connector;
         this.options = options;
@@ -209,10 +241,15 @@ public final class TransferEngine {
         ObjectInfo current = info;
         int failures = 0;
         long lastProgress = out.size();
+        stats = new Stats();
+        long t0 = System.nanoTime();
+        long had = out.size(); // a resumed file: only what arrives now counts for the speed
         try {
             loop(info, current, out, failures, lastProgress, l);
         } finally {
             sizedGeneration = -1; // the next download checks its own handle
+            stats.nanos = System.nanoTime() - t0;
+            stats.bytes = out.size() - had;
         }
         if (out.size() != info.size) {
             out.truncate(0);
@@ -242,11 +279,13 @@ public final class TransferEngine {
                 }
                 failures = noteFailure(info, out.size(), lastProgress, failures, e, l);
                 lastProgress = out.size();
+                stats.retries++;
                 dropSession();
                 backoff(failures);
             } catch (IOException e) {
                 failures = noteFailure(info, out.size(), lastProgress, failures, e, l);
                 lastProgress = out.size();
+                stats.retries++;
                 dropSession();
                 backoff(failures);
             }
@@ -626,7 +665,7 @@ public final class TransferEngine {
             {
                 long offset = out.size();
                 out.position(offset);
-                OutputStream sink = new ProgressSink(out, offset, total, info, l);
+                OutputStream sink = new ProgressSink(out, offset, total, info, l, stats);
                 while (offset < total) {
                     if (l != null && l.isCancelled()) throw new CancelledException();
                     long n = Math.min(chunk, total - offset);
@@ -636,6 +675,9 @@ public final class TransferEngine {
                         s.getPartialObject(info.handle, offset, n, sink);
                     }
                     long now = out.position();
+                    stats.chunks++;
+                    long wait = s.lastFirstDataNanos();
+                    if (wait > 0) stats.waitNanos += wait;
                     if (now == offset) {
                         throw new IOException("Empty chunk at " + offset + " of " + total);
                     }
@@ -651,7 +693,7 @@ public final class TransferEngine {
             }
             out.truncate(0);
             out.position(0);
-            s.getObject(info.handle, new ProgressSink(out, 0, total, info, l));
+            s.getObject(info.handle, new ProgressSink(out, 0, total, info, l, stats));
         }
     }
 
@@ -699,14 +741,16 @@ public final class TransferEngine {
         private final long total;
         private final ObjectInfo info;
         private final Listener listener;
+        private final Stats stats;
         private long done;
         private long lastReport;
 
-        ProgressSink(FileChannel out, long start, long total, ObjectInfo info, Listener l) {
+        ProgressSink(FileChannel out, long start, long total, ObjectInfo info, Listener l, Stats stats) {
             this.out = out;
             this.total = total;
             this.info = info;
             this.listener = l;
+            this.stats = stats;
             this.done = start;
         }
 
@@ -718,7 +762,9 @@ public final class TransferEngine {
         @Override
         public void write(byte[] b, int off, int len) throws IOException {
             ByteBuffer bb = ByteBuffer.wrap(b, off, len);
+            long w0 = System.nanoTime();
             while (bb.hasRemaining()) out.write(bb);
+            stats.writeNanos += System.nanoTime() - w0;
             done += len;
             if (listener != null && (done - lastReport >= 256 * 1024 || done == total)) {
                 lastReport = done;
