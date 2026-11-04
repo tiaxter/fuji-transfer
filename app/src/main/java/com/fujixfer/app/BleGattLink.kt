@@ -273,12 +273,20 @@ class BleGattLink(private val context: Context, private val device: BluetoothDev
         }
     }
 
-    /** Back to the balanced connection interval after the set-up (see connect). */
-    fun relaxPriority() {
+    /** Back to the balanced connection interval after the set-up (see connect) or after a download. */
+    fun relaxPriority() = setPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+
+    /**
+     * Longest connection interval (about 100-125 ms): while photos go over Wi-Fi this link only carries the camera's
+     * state notifications. Bluetooth and Wi-Fi share the 2.4 GHz band, on the phone and on the camera.
+     */
+    fun lowPower() = setPriority(BluetoothGatt.CONNECTION_PRIORITY_LOW_POWER)
+
+    private fun setPriority(priority: Int) {
         val g = gatt ?: return
         if (!isConnected) return
         try {
-            g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
+            g.requestConnectionPriority(priority)
         } catch (e: SecurityException) {
             // permission withdrawn meanwhile: the link stays as it is
         }

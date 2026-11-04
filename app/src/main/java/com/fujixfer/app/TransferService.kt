@@ -1052,6 +1052,12 @@ class TransferService : Service() {
         val batchStart = System.nanoTime()
         var batchBytes = 0L
         var batchTransfer = 0L
+        // Test (4 Nov): long Bluetooth interval while the batch runs; compare the MB/s per file with the earlier logs.
+        val bleDuringDownload = ble?.takeIf { it.isConnected }
+        if (bleDuringDownload != null && wifiNetwork != null) {
+            bleDuringDownload.lowPower()
+            DebugLog.add("  Bluetooth a intervallo lungo durante il download")
+        }
         try {
             for ((i, listed) in wanted.withIndex()) {
                 if (cancelRequested) break
@@ -1086,6 +1092,7 @@ class TransferService : Service() {
             }
         } finally {
             eng.galleryMode() // as XApp after an import: the listing and thumbnails go on in gallery mode
+            bleDuringDownload?.relaxPriority()
             val total = System.nanoTime() - batchStart
             if (ok > 0 && total > 0) {
                 DebugLog.add(String.format(Locale.ROOT,
