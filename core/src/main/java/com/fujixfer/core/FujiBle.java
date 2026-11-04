@@ -476,6 +476,7 @@ public final class FujiBle {
         long deadline = System.nanoTime() + timeoutMs * 1_000_000L;
         int busyRetries = 0;
         int quickRetries = 0;
+        long lastRefusedAt = firstRequestAt;
         boolean acceptedLogged = false;
         int quietPolls = 0;
         boolean sawLaunching = false;
@@ -501,17 +502,19 @@ public final class FujiBle {
                     quickRetries++;
                     log.trace("richiesta rifiutata subito dopo " + sinceRequest + " ms (camera occupata, errore 2): riprovo tra "
                             + BUSY_RETRY_MS + " ms, tentativo " + (quickRetries + 1));
+                    lastRefusedAt = requestAt;
                     g.sleep(BUSY_RETRY_MS);
+                    requestAt = System.nanoTime(); // before the write: the answer can arrive before the write returns
                     c.write(CH_FUNCTION_LAUNCH_REQUEST, u16(LAUNCH_IN_CAMERA_VIEWING));
-                    requestAt = System.nanoTime();
                     quietPolls = 0;
                     continue;
                 }
             }
             if (quickRetries > 0 && !acceptedLogged && v == null && sinceRequest >= 900) {
                 acceptedLogged = true;
-                log.trace("richiesta accettata al tentativo " + (quickRetries + 1) + ": la camera era occupata per più di "
-                        + (requestAt - firstRequestAt) / 1_000_000L + " ms dalla prima richiesta");
+                log.trace("richiesta accettata al tentativo " + (quickRetries + 1) + ": la camera rifiutava ancora "
+                        + (lastRefusedAt - firstRequestAt) / 1_000_000L + " ms dopo la prima richiesta e ha accettato quella a "
+                        + (requestAt - firstRequestAt) / 1_000_000L + " ms");
             }
             boolean fellBack = state == AP_NOT_LAUNCHED && sawLaunching;
             quietPolls = state == before ? quietPolls + 1 : 0;
