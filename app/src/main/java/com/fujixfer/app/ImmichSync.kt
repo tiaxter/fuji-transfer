@@ -27,6 +27,10 @@ object ImmichSync {
     const val PREF_URL = "immich_url"
     const val PREF_KEY = "immich_key"
     const val PREF_WIFI_ONLY = "immich_wifi_only"
+    private const val PREF_LOGIN = "immich_use_login"
+    private const val PREF_EMAIL = "immich_email"
+    private const val PREF_TOKEN = "immich_token"
+    private const val PREF_SERVER = "immich_server_info"
     private const val PREF_SYNCED = "immich_synced"
     private const val PREF_LAST = "immich_last"
     private const val JOB_ID = 4711
@@ -37,8 +41,39 @@ object ImmichSync {
     @Volatile
     var progress: String = ""
 
-    class Settings(val enabled: Boolean, val url: String, val key: String, val wifiOnly: Boolean) {
-        val ready get() = enabled && url.isNotBlank() && key.isNotBlank()
+    /**
+     * [useLogin]: email and password as in the web app; the password is used once to get [token] and not kept.
+     * Otherwise [key] is an API key (Immich → Impostazioni account → Chiavi API).
+     */
+    class Settings(
+        val enabled: Boolean, val url: String, val key: String, val wifiOnly: Boolean,
+        val useLogin: Boolean = false, val email: String = "", val token: String = "",
+    ) {
+        val credential get() = if (useLogin) token else key
+        val ready get() = enabled && url.isNotBlank() && credential.isNotBlank()
+    }
+
+    /** What the status card shows after a check: "Immich 1.118 · 12.480 foto" (empty = never checked). */
+    fun serverInfo(c: Context): String = c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(PREF_SERVER, "") ?: ""
+
+    fun saveServerInfo(c: Context, info: String) {
+        c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString(PREF_SERVER, info).apply()
+    }
+
+    /**
+     * Checks address and access; with [password] (email mode) logs in first. Returns the settings with the new
+     * token and the status line. Network: call off the main thread.
+     */
+    fun verify(s: Settings, password: String): Pair<Settings, String> {
+        var now = s
+        if (s.useLogin && password.isNotEmpty()) now = Settings(s.enabled, s.url, s.key, s.wifiOnly, true, s.email, ImmichClient.login(s.url, s.email, password))
+        if (now.credential.isBlank()) throw IOException(if (now.useLogin) "inserisci email e password" else "inserisci la chiave API")
+        val api = client(now)
+        api.test()
+        val v = api.version().split('.').take(2).joinToString(".")
+        val n = api.assetCount()
+        val count = if (n < 0) "" else " · " + java.text.NumberFormat.getIntegerInstance(java.util.Locale.ITALY).format(n) + " foto"
+        return now to "Immich $v$count"
     }
 
     private class Item(val uri: Uri, val name: String, val size: Long, val modifiedMs: Long) {
@@ -52,19 +87,21 @@ object ImmichSync {
         return Settings(
             p.getBoolean(PREF_ENABLED, false), p.getString(PREF_URL, "") ?: "", p.getString(PREF_KEY, "") ?: "",
             p.getBoolean(PREF_WIFI_ONLY, true),
+            p.getBoolean(PREF_LOGIN, (p.getString(PREF_KEY, "") ?: "").isEmpty()) /* an API key set before: key mode */, p.getString(PREF_EMAIL, "") ?: "", p.getString(PREF_TOKEN, "") ?: "",
         )
     }
 
     fun save(c: Context, s: Settings) {
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putBoolean(PREF_ENABLED, s.enabled).putString(PREF_URL, s.url.trim()).putString(PREF_KEY, s.key.trim())
-            .putBoolean(PREF_WIFI_ONLY, s.wifiOnly).apply()
+            .putBoolean(PREF_WIFI_ONLY, s.wifiOnly)
+            .putBoolean(PREF_LOGIN, s.useLogin).putString(PREF_EMAIL, s.email.trim()).putString(PREF_TOKEN, s.token).apply()
     }
 
     fun lastSummary(c: Context): String =
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(PREF_LAST, "") ?: ""
 
-    fun client(s: Settings) = ImmichClient(s.url, s.key, DEVICE_ID)
+    fun client(s: Settings) = ImmichClient(s.url, s.credential, DEVICE_ID, s.useLogin)
 
     /** Asks the system to run the sync when the network allows it. Replaces a job already waiting. */
     fun schedule(c: Context) {

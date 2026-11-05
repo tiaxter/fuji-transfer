@@ -49,16 +49,71 @@ public final class ImmichClient {
     private static final Pattern STATUS = Pattern.compile("\"status\"\\s*:\\s*\"(\\w+)\"");
 
     private final String api;
-    private final String apiKey;
+    private final String credential;
+    private final boolean bearer;
     private final String deviceId;
     public int connectTimeoutMs = 10_000;
     public int readTimeoutMs = 300_000;
 
     /** {@code baseUrl}: "http://host:2283" or the same with "/api"; a missing scheme means http. */
     public ImmichClient(String baseUrl, String apiKey, String deviceId) {
+        this(baseUrl, apiKey, deviceId, false);
+    }
+
+    /** {@code bearer}: {@code credential} is an access token from {@link #login}, not an API key. */
+    public ImmichClient(String baseUrl, String credential, String deviceId, boolean bearer) {
         this.api = normalize(baseUrl);
-        this.apiKey = apiKey.trim();
+        this.credential = credential.trim();
+        this.bearer = bearer;
         this.deviceId = deviceId;
+    }
+
+    /**
+     * Email and password, as in the web app: returns the session's access token (used with {@code bearer}).
+     * The password is not kept.
+     */
+    public static String login(String baseUrl, String email, String password) throws IOException {
+        HttpURLConnection c = (HttpURLConnection) java.net.URI.create(normalize(baseUrl) + "/auth/login").toURL().openConnection();
+        c.setRequestMethod("POST");
+        c.setConnectTimeout(10_000);
+        c.setReadTimeout(30_000);
+        c.setRequestProperty("Content-Type", "application/json");
+        c.setRequestProperty("Accept", "application/json");
+        byte[] req = ("{\"email\":\"" + json(email.trim()) + "\",\"password\":\"" + json(password) + "\"}")
+                .getBytes(StandardCharsets.UTF_8);
+        c.setDoOutput(true);
+        c.setFixedLengthStreamingMode(req.length);
+        try (OutputStream o = c.getOutputStream()) {
+            o.write(req);
+        }
+        String body;
+        try {
+            body = read(c, 200, 201);
+        } catch (ImmichException e) {
+            if (e.code == 400 || e.code == 401) throw new ImmichException("email o password sbagliate", e.code, true);
+            throw e;
+        }
+        Matcher m = Pattern.compile("\"accessToken\"\\s*:\\s*\"([^\"]+)\"").matcher(body);
+        if (!m.find()) throw new ImmichException("risposta di Immich non riconosciuta", 200, false);
+        return m.group(1);
+    }
+
+    /** Server version, "1.118.2" (GET /server/version, no login needed). */
+    public String version() throws IOException {
+        String body = read(open("/server/version", "GET"), 200);
+        return num(body, "major") + "." + num(body, "minor") + "." + num(body, "patch");
+    }
+
+    /** Photos and videos of the account (GET /assets/statistics), or -1 if the server does not say. */
+    public long assetCount() throws IOException {
+        String body = read(open("/assets/statistics", "GET"), 200);
+        String t = num(body, "total");
+        return t.isEmpty() ? -1 : Long.parseLong(t);
+    }
+
+    private static String num(String body, String field) {
+        Matcher m = Pattern.compile("\"" + field + "\"\\s*:\\s*(\\d+)").matcher(body);
+        return m.find() ? m.group(1) : "";
     }
 
     public static String normalize(String baseUrl) {
@@ -155,7 +210,8 @@ public final class ImmichClient {
         c.setRequestMethod(method);
         c.setConnectTimeout(connectTimeoutMs);
         c.setReadTimeout(readTimeoutMs);
-        c.setRequestProperty("x-api-key", apiKey);
+        if (bearer) c.setRequestProperty("Authorization", "Bearer " + credential);
+        else c.setRequestProperty("x-api-key", credential);
         c.setRequestProperty("Accept", "application/json");
         return c;
     }
@@ -175,7 +231,7 @@ public final class ImmichClient {
         }
         c.disconnect();
         for (int k : ok) if (code == k) return body;
-        if (code == 401 || code == 403) throw new ImmichException("chiave API rifiutata (HTTP " + code + ")", code, true);
+        if (code == 401 || code == 403) throw new ImmichException("accesso rifiutato (HTTP " + code + "): controlla chiave o password", code, true);
         if (code == 404) throw new ImmichException("indirizzo non valido: Immich non risponde qui (HTTP 404)", code, true);
         boolean transientError = code == 408 || code == 429 || code >= 500;
         throw new ImmichException("Immich ha risposto HTTP " + code, code, !transientError);

@@ -1393,13 +1393,28 @@ public final class SelfTest {
         com.sun.net.httpserver.HttpServer srv = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
         srv.createContext("/api", ex -> {
             String path = ex.getRequestURI().getPath();
-            boolean keyOk = "secret".equals(ex.getRequestHeaders().getFirst("x-api-key"));
+            boolean keyOk = "secret".equals(ex.getRequestHeaders().getFirst("x-api-key"))
+                    || "Bearer tok123".equals(ex.getRequestHeaders().getFirst("Authorization"))
+                    || path.equals("/api/auth/login") || path.equals("/api/server/version");
             byte[] req = ex.getRequestBody().readAllBytes();
             String out;
             int code = 200;
             if (!keyOk) {
                 out = "{\"message\":\"Invalid API key\"}";
                 code = 401;
+            } else if (path.equals("/api/auth/login")) {
+                String body = new String(req, java.nio.charset.StandardCharsets.UTF_8);
+                if (body.contains("\"email\":\"jerry@example.com\"") && body.contains("\"password\":\"p\\\"w\"")) {
+                    out = "{\"accessToken\":\"tok123\",\"userId\":\"u1\"}";
+                    code = 201;
+                } else {
+                    out = "{\"message\":\"Incorrect email or password\"}";
+                    code = 401;
+                }
+            } else if (path.equals("/api/server/version")) {
+                out = "{\"major\":1,\"minor\":118,\"patch\":2}";
+            } else if (path.equals("/api/assets/statistics")) {
+                out = "{\"images\":12000,\"videos\":480,\"total\":12480}";
             } else if (path.equals("/api/users/me")) {
                 out = "{\"email\":\"jerry@example.com\"}";
             } else if (path.equals("/api/assets/bulk-upload-check")) {
@@ -1463,6 +1478,20 @@ public final class SelfTest {
 
             check("another file is uploaded", c.sync("DSCF0002.JPG", bytesSource(b), t, t) == ImmichClient.Outcome.UPLOADED
                     && received.size() == 2 && java.util.Arrays.equals(received.get(1), b));
+
+            check("server version", c.version().equals("1.118.2"));
+            check("photos and videos of the account", c.assetCount() == 12480);
+            String tok = ImmichClient.login(base, "jerry@example.com", "p\"w");
+            check("login with email and password gives a token", tok.equals("tok123"));
+            ImmichClient byLogin = new ImmichClient(base, tok, "fuji-test", true);
+            check("the token works like a key (Bearer)", byLogin.test().equals("jerry@example.com")
+                    && byLogin.sync("DSCF0001.JPG", bytesSource(a), t, t) == ImmichClient.Outcome.DUPLICATE);
+            try {
+                ImmichClient.login(base, "jerry@example.com", "nope");
+                check("wrong password fails", false);
+            } catch (ImmichClient.ImmichException e) {
+                check("wrong password: permanent, said plainly", e.permanent && e.getMessage().contains("password"));
+            }
 
             ImmichClient bad = new ImmichClient(base, "wrong", "fuji-test");
             try {

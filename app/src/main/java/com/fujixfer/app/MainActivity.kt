@@ -85,7 +85,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var previewOpen by mutableStateOf(false)
     /** The "Registro tecnico" screen, over everything but the dialogs. */
     private var logOpen by mutableStateOf(false)
-    /** A confirmation or the Immich settings, over everything (null = none). */
+    private var immichOpen by mutableStateOf(false)
+    /** A confirmation, over everything (null = none). */
     private var appDialog by mutableStateOf<AppDialog?>(null)
 
     private sealed class AppDialog {
@@ -95,7 +96,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             val onConfirm: () -> Unit, val onDismiss: () -> Unit = {},
         ) : AppDialog()
 
-        object Immich : AppDialog()
     }
     /** The user went back to the gallery: downloads go on, a strip (and the notification) bring them back. */
     private var downloadsHidden = false
@@ -380,6 +380,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             logOpen = false // the log screen is over everything: back closes it first
             return
         }
+        if (immichOpen) {
+            immichOpen = false
+            return
+        }
         if (previewOpen) {
             previewOpen = false // the offline preview is over everything
             return
@@ -642,6 +646,21 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         onCopy = { copyLog(it) },
                         onShare = { shareLog() },
                         onClear = { confirmClearLog() },
+                    )
+                }
+            }
+            Layer(immichOpen) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
+                    ImmichScreen(
+                        onBack = { immichOpen = false },
+                        onSaved = { ready ->
+                            immichOpen = false
+                            android.widget.Toast.makeText(
+                                this@MainActivity,
+                                if (ready) "Immich: le foto partono appena c'è la rete giusta" else "Immich: invio spento",
+                                android.widget.Toast.LENGTH_SHORT,
+                            ).show()
+                        },
                     )
                 }
             }
@@ -1823,7 +1842,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
 
     private fun showImmich() {
-        appDialog = AppDialog.Immich
+        immichOpen = true
     }
 
     private fun showLog() {
@@ -1855,93 +1874,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         d.onDismiss()
                     }) { androidx.compose.material3.Text(d.dismiss) }
                 },
-            )
-            AppDialog.Immich -> ImmichDialog()
-        }
-    }
-
-    /**
-     * Immich settings: server address, API key, "only on an unmetered network". "Prova" checks address and key;
-     * "Salva e invia" turns the sync on (files the app saved are sent after each download, and now).
-     */
-    @Composable
-    private fun ImmichDialog() {
-        val c = androidx.compose.material3.MaterialTheme.colorScheme
-        val s = androidx.compose.runtime.remember { ImmichSync.settings(this@MainActivity) }
-        var url by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(s.url) }
-        var key by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(s.key) }
-        var on by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(s.enabled || s.url.isEmpty()) }
-        var wifi by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(s.wifiOnly) }
-        var info by androidx.compose.runtime.remember {
-            androidx.compose.runtime.mutableStateOf(
-                (ImmichSync.lastSummary(this@MainActivity).ifEmpty { "Mai sincronizzato." }) +
-                    "\nOgni file è confrontato con Immich (SHA-1): se c'è già, non viene inviato.",
-            )
-        }
-        fun read() = ImmichSync.Settings(on, url, key, wifi)
-        androidx.compose.material3.AlertDialog(
-            onDismissRequest = { appDialog = null },
-            title = { androidx.compose.material3.Text("Immich") },
-            text = {
-                androidx.compose.foundation.layout.Column {
-                    FujiField(url, { url = it }, "Indirizzo, es. http://192.168.1.10:2283", true, Modifier.fillMaxWidth())
-                    FujiField(
-                        key, { key = it }, "Chiave API (Immich → Impostazioni → Chiavi API)", true,
-                        Modifier.padding(top = 8.dp).fillMaxWidth(), password = true,
-                    )
-                    CheckRow("Invia a Immich le foto scaricate", on) { on = it }
-                    CheckRow("Solo su Wi-Fi senza limiti (non con i dati mobili)", wifi) { wifi = it }
-                    androidx.compose.material3.Text(info, Modifier.padding(top = 8.dp), color = c.onSurfaceVariant, style = type(12, 16))
-                }
-            },
-            confirmButton = {
-                androidx.compose.foundation.layout.Row {
-                    // "Prova" keeps the dialog open to show the result
-                    androidx.compose.material3.TextButton(onClick = {
-                        val now = read()
-                        if (now.url.isBlank() || now.key.isBlank()) {
-                            info = "Inserisci indirizzo e chiave API."
-                        } else {
-                            info = "Provo…"
-                            Thread {
-                                val msg = try {
-                                    val who = ImmichSync.client(now).test()
-                                    "Collegato a Immich" + if (who.isNotEmpty()) " come $who." else "."
-                                } catch (e: Exception) {
-                                    "Non riesco: ${e.message}"
-                                }
-                                runOnUiThread { info = msg }
-                            }.start()
-                        }
-                    }) { androidx.compose.material3.Text("Prova") }
-                    androidx.compose.material3.TextButton(onClick = {
-                        ImmichSync.save(this@MainActivity, read())
-                        ImmichSync.schedule(this@MainActivity)
-                        android.widget.Toast.makeText(
-                            this@MainActivity,
-                            if (read().ready) "Sincronizzazione in coda" else "Sincronizzazione spenta",
-                            android.widget.Toast.LENGTH_SHORT,
-                        ).show()
-                        appDialog = null
-                    }) { androidx.compose.material3.Text("Salva e invia") }
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { appDialog = null }) { androidx.compose.material3.Text("Chiudi") }
-            },
-        )
-    }
-
-    @Composable
-    private fun CheckRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-        androidx.compose.foundation.layout.Row(
-            Modifier.padding(top = 4.dp).fillMaxWidth().clickable(role = androidx.compose.ui.semantics.Role.Checkbox) { onChange(!checked) },
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            androidx.compose.material3.Checkbox(checked = checked, onCheckedChange = null)
-            androidx.compose.material3.Text(
-                label, Modifier.padding(start = 12.dp), color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
-                style = type(14, 20),
             )
         }
     }
