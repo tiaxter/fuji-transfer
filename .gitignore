@@ -14,3 +14,10 @@ apk/
 
 # CA della rete locale per il Docker (configurazione della macchina)
 docker/certs/*.crt
+
+# Copie di lavoro, estratti dell'app XApp e script di analisi: non sono codice del progetto
+docs/backup-*/
+docs/removed-by-compose/
+docs/film-raw/
+docs/*.bak-*
+extract_apk.sh
