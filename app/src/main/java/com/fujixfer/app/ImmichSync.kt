@@ -51,7 +51,7 @@ object ImmichSync {
     @Volatile
     var version: Int = 0
 
-    private fun set(c: Context, pref: String): Set<String> =
+    private fun set(c: Context, pref: String): MutableSet<String> =
         c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(pref, emptySet())!!.toHashSet()
 
     private fun putSet(c: Context, pref: String, v: Set<String>) {
