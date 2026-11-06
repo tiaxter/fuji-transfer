@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +38,14 @@ data class DetailsUi(
     val done: String,
     val canDownload: Boolean,
     val selected: Boolean,
+    /** "26 MP" next to the format ("" = unknown). */
+    val megapixels: String = "",
+    val immich: ImmichMark = ImmichMark.None,
+    val canUpload: Boolean = false,
 )
+
+/** Where a camera file stands with Immich. */
+enum class ImmichMark(val label: String) { None("Non ancora"), Queued("In coda · Wi‑Fi di casa"), Done("Sì") }
 
 /**
  * The details as a real sheet over the full-size viewer (a window of its own: the viewer stays visible and live
@@ -46,7 +55,7 @@ data class DetailsUi(
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DetailsSheet(ui: DetailsUi, onDismiss: () -> Unit, onSelect: () -> Boolean, onDownload: () -> Unit) {
+fun DetailsSheet(ui: DetailsUi, onDismiss: () -> Unit, onSelect: () -> Boolean, onDownload: () -> Unit, onUpload: () -> ImmichMark) {
     val c = MaterialTheme.colorScheme
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -54,7 +63,7 @@ fun DetailsSheet(ui: DetailsUi, onDismiss: () -> Unit, onSelect: () -> Boolean, 
         scrimColor = Color.Black.copy(alpha = 0.45f),
         dragHandle = { SheetHandle() },
     ) {
-        DetailsContent(ui, onSelect, onDownload)
+        DetailsContent(ui, onSelect, onDownload, onUpload)
     }
 }
 
@@ -64,11 +73,15 @@ fun SheetHandle() {
     Box(Modifier.padding(top = 12.dp).size(width = 32.dp, height = 4.dp).clip(RoundedCornerShape(2.dp)).background(c.outline))
 }
 
-/** Title, format tag, the four facts and the select / download pair: the inside of the sheet, also used by the offline preview. */
+/**
+ * Title, format tags, the four facts and the select / upload / download group: the inside of the sheet, also used
+ * by the offline preview. [onUpload] queues the file for Immich (or takes it out of the queue) and returns the new mark.
+ */
 @Composable
-fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Unit) {
+fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Unit, onUpload: () -> ImmichMark) {
     val c = MaterialTheme.colorScheme
     var selected by remember(ui) { mutableStateOf(ui.selected) }
+    var immich by remember(ui) { mutableStateOf(ui.immich) }
     Column(Modifier.fillMaxWidth().padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -82,38 +95,83 @@ fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Uni
             ) {
                 Text(ui.format, color = c.onSecondaryContainer, style = type(12, 16, medium = true), maxLines = 1)
             }
+            if (ui.megapixels.isNotEmpty()) {
+                Box(
+                    Modifier.padding(start = 8.dp).height(28.dp).clip(RoundedCornerShape(8.dp))
+                        .border(1.dp, c.outlineVariant, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(ui.megapixels, color = c.onSurface, style = type(12, 16, medium = true), maxLines = 1)
+                }
+            }
         }
         Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
             Column(Modifier.weight(1f)) {
                 Field("Scattata", ui.date)
-                Field("Risoluzione", ui.dims, Modifier.padding(top = 14.dp))
+                Field("Su Immich", immich.label, Modifier.padding(top = 14.dp), if (immich == ImmichMark.Done) c.primary else null)
             }
             Column(Modifier.weight(1f).padding(start = 16.dp)) {
                 Field("Dimensione", ui.size)
                 Field("Sul telefono", ui.done, Modifier.padding(top = 14.dp))
             }
         }
+        // Seleziona (icon only) | Carica | Scarica ora
         Row(Modifier.fillMaxWidth().padding(top = 24.dp)) {
             GroupButton(
-                if (selected) "Selezionata" else "Seleziona", first = true,
-                container = c.secondaryContainer, content = c.onSecondaryContainer,
-                onClick = { selected = onSelect() }, modifier = Modifier.weight(1f),
-                icon = if (selected) R.drawable.ic_check else null,
+                "", first = true,
+                container = if (selected) c.secondaryContainer else c.surfaceContainerHighest,
+                content = if (selected) c.onSecondaryContainer else c.onSurface,
+                onClick = { selected = onSelect() }, modifier = Modifier.width(56.dp),
+                icon = if (selected) R.drawable.ic_check else R.drawable.ic_select_all,
+                description = if (selected) "Selezionata, tocca per togliere" else "Seleziona",
+            )
+            Box(Modifier.size(2.dp))
+            GroupButton(
+                when (immich) {
+                    ImmichMark.None -> "Carica"
+                    ImmichMark.Queued -> "In coda"
+                    ImmichMark.Done -> "Su Immich"
+                },
+                first = false, middle = true,
+                container = when (immich) {
+                    ImmichMark.None -> c.secondaryContainer
+                    ImmichMark.Queued -> c.tertiaryContainer
+                    ImmichMark.Done -> c.surfaceContainerHighest
+                },
+                content = when (immich) {
+                    ImmichMark.None -> c.onSecondaryContainer
+                    ImmichMark.Queued -> c.onTertiaryContainer
+                    ImmichMark.Done -> c.onSurfaceVariant
+                },
+                onClick = { immich = onUpload() }, modifier = Modifier.weight(1f),
+                enabled = immich != ImmichMark.Done && (ui.canUpload || immich == ImmichMark.Queued),
+                icon = when (immich) {
+                    ImmichMark.None -> R.drawable.ic_cloud_upload
+                    ImmichMark.Queued -> R.drawable.ic_cloud_queue
+                    ImmichMark.Done -> R.drawable.ic_cloud_done
+                },
+                textSize = 14,
+                description = when (immich) {
+                    ImmichMark.None -> "Carica su Immich"
+                    ImmichMark.Queued -> "In coda per Immich, tocca per annullare"
+                    ImmichMark.Done -> "Già su Immich"
+                },
             )
             Box(Modifier.size(2.dp))
             GroupButton(
                 "Scarica ora", first = false, container = c.primary, content = c.onPrimary,
-                onClick = onDownload, modifier = Modifier.weight(1f), enabled = ui.canDownload, icon = R.drawable.ic_download,
+                onClick = onDownload, modifier = Modifier.weight(1.2f), enabled = ui.canDownload, icon = R.drawable.ic_download,
+                textSize = 14,
             )
         }
     }
 }
 
 @Composable
-private fun Field(label: String, value: String, modifier: Modifier = Modifier) {
+private fun Field(label: String, value: String, modifier: Modifier = Modifier, valueColor: Color? = null) {
     val c = MaterialTheme.colorScheme
     Column(modifier) {
         Text(label, color = c.onSurfaceVariant, style = type(12, 16))
-        Text(value, color = c.onSurface, style = type(16, 24))
+        Text(value, color = valueColor ?: c.onSurface, style = type(16, 24), maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

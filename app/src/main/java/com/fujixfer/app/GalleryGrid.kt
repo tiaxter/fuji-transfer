@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.foundation.layout.height
 import android.graphics.Bitmap
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -90,7 +91,12 @@ var coverHandle by androidx.compose.runtime.mutableLongStateOf(-1L)
 class TileUi(
     val bitmap: Bitmap?,
     val selected: Boolean,
+    /** Already saved on the phone. */
     val done: Boolean,
+    /** Known to be on the Immich server. */
+    val onImmich: Boolean = false,
+    /** Asked with "Carica", not sent yet. */
+    val immichQueued: Boolean = false,
     /** "RAW", "VIDEO", the extension, or the film simulation; null = no badge. */
     val badge: String?,
     val badgeIcon: Int?,
@@ -348,13 +354,33 @@ private fun Tile(
             }
         }
 
-        if (ui.done) {
-            Icon(
-                painterResource(R.drawable.ic_cloud_done), contentDescription = "Già scaricata",
-                modifier = Modifier.align(Alignment.TopStart).padding(8.dp).size(24.dp).clip(CircleShape)
-                    .background(Color(0x99000000)).padding(4.dp),
-                tint = Color.White,
-            )
+        // top left: on the phone, on Immich, or waiting for Immich
+        if (ui.done || ui.onImmich || ui.immichQueued) {
+            Row(Modifier.align(Alignment.TopStart).padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (ui.done) {
+                    Icon(
+                        painterResource(R.drawable.ic_phone), contentDescription = null,
+                        modifier = Modifier.size(24.dp).clip(CircleShape).background(Color(0x99000000)).padding(4.dp),
+                        tint = Color.White,
+                    )
+                }
+                if (ui.immichQueued) {
+                    Row(
+                        Modifier.height(24.dp).clip(CircleShape).background(c.tertiaryContainer).padding(start = 4.dp, end = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(painterResource(R.drawable.ic_cloud_queue), null, Modifier.size(16.dp), tint = c.onTertiaryContainer)
+                        Spacer(Modifier.width(3.dp))
+                        Text("In coda", color = c.onTertiaryContainer, style = type(11, 14, medium = true), maxLines = 1)
+                    }
+                } else if (ui.onImmich) {
+                    Icon(
+                        painterResource(R.drawable.ic_cloud_done), contentDescription = null,
+                        modifier = Modifier.size(24.dp).clip(CircleShape).background(Color(0x99000000)).padding(4.dp),
+                        tint = Color.White,
+                    )
+                }
+            }
         }
         if (ui.badge != null) {
             Row(

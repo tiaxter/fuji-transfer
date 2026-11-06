@@ -99,6 +99,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
     /** The user went back to the gallery: downloads go on, a strip (and the notification) bring them back. */
     private var downloadsHidden = false
+    /** A batch started by "Carica": it runs behind the gallery (strip), not on the download screen. */
+    private var quietBatchPending = false
     private var mapScreen: MapScreen? = null
     /** Gallery limited to an area picked on the map (keys name|date), null = no area filter. */
     /** Days picked in the date filter ("yyyyMMdd".."yyyyMMdd"), null = all. */
@@ -157,6 +159,18 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var visibleRows: List<Int> = emptyList()
     private var done: Set<String> = emptySet()
     private var doneVersion = -1
+    /** Camera files ("name|date") waiting for Immich, and those known to be there. */
+    private var immichQueued: Set<String> = emptySet()
+    private var immichDone: Set<String> = emptySet()
+    private var immichVersion = -1
+    /** The last "Carica" from the gallery, for Annulla; [uploadSnack] is its message ("" = none). */
+    private var lastQueued: List<ObjectInfo> = emptyList()
+    private var uploadSnack = ""
+    private val snackHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val hideSnack = Runnable {
+        uploadSnack = ""
+        updateBottom()
+    }
     private var thumbRefreshPosted = false
     private val selected = HashSet<Long>()
     /** Error text the user closed with "back": not shown again until a different error arrives. */
@@ -210,11 +224,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             bitmap = bmp,
             selected = sel,
             done = isDone,
+            onImmich = key(i) in immichDone,
+            immichQueued = key(i) in immichQueued,
             badge = badge,
             badgeIcon = badgeIcon,
             placeholder = if (missing) kindOf(i).label else "",
             loading = bmp == null && !missing && TransferState.connected,
-            description = i.filename + (if (sel) ", selezionata" else "") + (if (isDone) ", già scaricata" else ""),
+            description = i.filename + (if (sel) ", selezionata" else "") + (if (isDone) ", sul telefono" else "") +
+                (if (key(i) in immichQueued) ", in coda per Immich" else if (key(i) in immichDone) ", su Immich" else ""),
         )
     }
 
@@ -585,7 +602,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                             )
                         }
                     }
-                    GalleryBottom(galleryBottomUi, onStrip = { showDownloads() }, onDownload = { downloadSelected() })
+                    GalleryBottom(
+                        galleryBottomUi, onStrip = { showDownloads() }, onDownload = { downloadSelected() },
+                        onUpload = { uploadSelected() }, onUndo = { undoUpload() },
+                    )
                 }
             }
             // over the gallery: they take the touches, so the cells under them stay quiet
@@ -635,6 +655,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                                 downloadsHidden = false
                                 startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, longArrayOf(info.handle)) }
                             },
+                            onUpload = { previewInfo?.let { toggleUpload(it) } ?: ImmichMark.None },
                         )
                     }
                 }
@@ -677,6 +698,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         downloadsHidden = false
                         startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, longArrayOf(info.handle)) }
                     },
+                    onUpload = { toggleUpload(info) },
                 )
             }
         }
@@ -783,6 +805,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             doneVersion = st.doneVersion
             done = doneSet()
         }
+        if (ImmichSync.version != immichVersion) readImmichMarks()
         if (st.objects !== shownObjects) {
             // a RAF gets the thumbnail of its JPG/HEIF (same picture, cheaper to fetch)
             val images = HashMap<String, ObjectInfo>()
@@ -822,7 +845,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         showConnecting = connecting
         showError = failed
         showGallery = st.connected
-        if (!downloading) downloadsHidden = false // the next batch opens its screen again
+        if (downloading) quietBatchPending = false
+        if (!downloading && !quietBatchPending) downloadsHidden = false // the next batch opens its screen again
         showDownload = downloading && !downloadsHidden
         galleryBottomUi = galleryBottomUi.copy(strip = downloading && downloadsHidden && st.connected)
         if (downloading && downloadsHidden) updateStrip()
@@ -1116,6 +1140,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 else -> formatSize(bytes) + hiddenNote
             },
             canDownload = selObjs.isNotEmpty() && st.connected, // during a batch the new one waits in the queue
+            // files not on the phone yet need the camera to fetch them first
+            canUpload = selObjs.isNotEmpty() && (st.connected || selObjs.all { key(it) in done }),
+            snack = if (selObjs.isEmpty()) uploadSnack else "",
         )
         galleryTopUi = galleryTopUi.copy(allSelected = files.isNotEmpty() && files.all { it.handle in selected })
     }
@@ -1189,6 +1216,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             done = if (key(info) in done) "Già scaricata" else "Non ancora",
             canDownload = TransferState.connected,
             selected = info.handle in selected,
+            megapixels = if (info.width > 0 && info.height > 0) "${(info.width * info.height + 500_000) / 1_000_000} MP" else "",
+            immich = immichMark(info),
+            canUpload = TransferState.connected || key(info) in done,
         )
     }
 
@@ -1965,6 +1995,87 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         if (handles.isEmpty()) return
         downloadsHidden = false
         startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, handles.toLongArray()) }
+    }
+
+    // ------------------------------------------------------------------ Immich ("Carica")
+
+    private fun readImmichMarks() {
+        immichVersion = ImmichSync.version
+        immichQueued = ImmichSync.queued(this)
+        immichDone = ImmichSync.onServer(this)
+        refreshVisibleRows(animate = false)
+        updateBottom()
+    }
+
+    private fun immichMark(i: ObjectInfo): ImmichMark = when (key(i)) {
+        in immichQueued -> ImmichMark.Queued
+        in immichDone -> ImmichMark.Done
+        else -> ImmichMark.None
+    }
+
+    /**
+     * Queues [list] for Immich: files already on the phone wait only for the network; the others are downloaded
+     * first, behind the gallery. Without a server set up, opens the Immich screen instead and returns false.
+     */
+    private fun queueForImmich(list: List<ObjectInfo>): Boolean {
+        if (!ImmichSync.settings(this).configured) {
+            detailsInfo = null
+            previewOpen = false
+            immichOpen = true
+            android.widget.Toast.makeText(this, "Prima collega il tuo server Immich", android.widget.Toast.LENGTH_SHORT).show()
+            return false
+        }
+        ImmichSync.enqueue(this, list.map { key(it) })
+        val missing = list.filter { key(it) !in done }
+        if (missing.isNotEmpty() && TransferState.connected) {
+            downloadsHidden = true
+            quietBatchPending = true
+            startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, missing.map { m -> m.handle }.toLongArray()) }
+        }
+        ImmichSync.schedule(this) // the ones already on the phone; a batch schedules again when it ends
+        readImmichMarks()
+        return true
+    }
+
+    /** "Carica" in the selection bar: the selection closes and a message says what happens next, with Annulla. */
+    private fun uploadSelected() {
+        val list = TransferState.objects.filter { it.handle in selected && key(it) !in immichDone }
+        if (list.isEmpty()) {
+            android.widget.Toast.makeText(this, "Sono già tutte su Immich", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (!queueForImmich(list)) return
+        lastQueued = list
+        selected.clear()
+        uploadSnack = if (list.size == 1) "1 foto in coda per Immich" else "${list.size} foto in coda per Immich"
+        snackHandler.removeCallbacks(hideSnack)
+        snackHandler.postDelayed(hideSnack, 8000)
+        refreshVisibleRows(animate = true)
+        updateBottom()
+        viewer?.paintSelect()
+    }
+
+    /** Annulla: out of the Immich queue and selected again (a download already started goes on). */
+    private fun undoUpload() {
+        ImmichSync.dequeue(this, lastQueued.map { key(it) })
+        lastQueued.forEach { selected.add(it.handle) }
+        lastQueued = emptyList()
+        uploadSnack = ""
+        snackHandler.removeCallbacks(hideSnack)
+        readImmichMarks()
+        refreshVisibleRows(animate = true)
+        updateBottom()
+    }
+
+    /** "Carica" on one file (details sheet, preview): queue it, or take it out of the queue. */
+    private fun toggleUpload(info: ObjectInfo): ImmichMark = when (immichMark(info)) {
+        ImmichMark.Queued -> {
+            ImmichSync.dequeue(this, listOf(key(info)))
+            readImmichMarks()
+            ImmichMark.None
+        }
+        ImmichMark.None -> if (queueForImmich(listOf(info))) ImmichMark.Queued else ImmichMark.None
+        ImmichMark.Done -> ImmichMark.Done
     }
 
     private fun sendAction(action: String) {

@@ -1673,6 +1673,7 @@ class TransferService : Service() {
             throw IOException("Salvataggio fallito: ${e.message}")
         }
         forgetPending(key)
+        ImmichSync.rememberMedia(this, doneKey(info), uri) // so "Carica" knows which item is this camera file
     }
 
     /** Media store items started and not finished, "name|date|size" -> uri. */

@@ -1,5 +1,11 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -234,10 +240,14 @@ data class GalleryBottomUi(
     val selTitle: String = "Nessuna selezionata",
     val selInfo: String = "",
     val canDownload: Boolean = false,
+    /** "Carica": the selection goes to Immich (downloaded first where needed). */
+    val canUpload: Boolean = false,
+    /** After "Carica", with nothing selected: "5 foto in coda per Immich" with Annulla ("" = none). */
+    val snack: String = "",
 )
 
 @Composable
-fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Unit) {
+fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Unit, onUpload: () -> Unit, onUndo: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth()) {
         if (ui.strip) {
@@ -259,41 +269,77 @@ fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Un
             }
         }
 
-        // floating selection bar (Expressive): a pill with the count, the download button beside it
-        Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            val pill = RoundedCornerShape(32.dp)
-            Column(
-                Modifier.weight(1f).height(64.dp).shadow(3.dp, pill).background(c.primaryContainer, pill)
-                    .padding(start = 24.dp, end = 16.dp),
-                verticalArrangement = Arrangement.Center,
+        if (ui.snack.isNotEmpty()) {
+            // after "Carica": what happens next, and the way back
+            Row(
+                Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp).heightIn(min = 64.dp)
+                    .shadow(3.dp, RoundedCornerShape(20.dp)).background(c.inverseSurface, RoundedCornerShape(20.dp))
+                    .padding(start = 16.dp, end = 8.dp, top = 10.dp, bottom = 10.dp)
+                    .semantics { liveRegion = LiveRegionMode.Polite },
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(ui.selTitle, color = c.onSurface, style = type(16, 24, medium = true), maxLines = 1)
-                Text(ui.selInfo, color = c.onSurfaceVariant, style = type(14, 20), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Icon(painterResource(R.drawable.ic_cloud_queue), null, Modifier.size(24.dp), tint = c.inverseOnSurface)
+                Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                    Text(ui.snack, color = c.inverseOnSurface, style = type(14, 20, medium = true), maxLines = 1)
+                    Text("Partono col Wi‑Fi di casa, anche ad app chiusa", color = c.inverseOnSurface.copy(alpha = 0.85f), style = type(12, 16), maxLines = 2)
+                }
+                FujiButton("Annulla", onUndo, kind = ButtonKind.Text, height = 40.dp, contentColor = c.inversePrimary)
             }
-            DownloadFab(ui.canDownload, onDownload, Modifier.padding(start = 8.dp))
+        } else {
+            // floating selection bar (Expressive): a pill with the count, then the joined Carica | Scarica pair
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                val pill = RoundedCornerShape(32.dp)
+                Column(
+                    Modifier.weight(1f).height(64.dp).shadow(3.dp, pill).background(c.primaryContainer, pill)
+                        .padding(start = 24.dp, end = 16.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(ui.selTitle, color = c.onSurface, style = type(16, 24, medium = true), maxLines = 1)
+                    Text(ui.selInfo, color = c.onSurfaceVariant, style = type(14, 20), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(Modifier.padding(start = 8.dp)) {
+                    ActionTile(
+                        "Carica", R.drawable.ic_cloud_upload, first = true, enabled = ui.canUpload,
+                        container = c.secondaryContainer, content = c.onSecondaryContainer,
+                        description = "Carica su Immich le foto selezionate", onClick = onUpload,
+                    )
+                    Box(Modifier.width(2.dp))
+                    ActionTile(
+                        "Scarica", R.drawable.ic_download, first = false, enabled = ui.canDownload,
+                        container = c.primary, content = c.onPrimary,
+                        description = "Scarica sul telefono le foto selezionate", onClick = onDownload,
+                    )
+                }
+            }
         }
     }
 }
 
-/** The download button beside the selection bar: 64 dp, 20 dp corners that tighten while pressed. */
+/**
+ * One of the two joined buttons beside the selection bar: 60 × 64 dp, icon over a short word, 20 dp outer and
+ * 8 dp inner corners; the outer ones tighten while pressed.
+ */
 @Composable
-private fun DownloadFab(enabled: Boolean, onClick: () -> Unit, modifier: Modifier) {
+private fun ActionTile(
+    text: String, icon: Int, first: Boolean, enabled: Boolean, container: Color, content: Color,
+    description: String, onClick: () -> Unit,
+) {
     val c = MaterialTheme.colorScheme
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
-    val radius by animateDpAsState(if (pressed && enabled) 12.dp else 20.dp, tween(if (pressed) 120 else 220), label = "fab")
-    val shape = RoundedCornerShape(radius)
-    val content = if (enabled) c.onPrimary else c.onSurfaceVariant
-    Box(
-        modifier.height(64.dp).shadow(3.dp, shape).background(if (enabled) c.primary else c.surfaceContainerHighest, shape).clip(shape)
+    val outer by animateDpAsState(if (pressed && enabled) 12.dp else 20.dp, tween(if (pressed) 120 else 220), label = "tile")
+    val shape = if (first) RoundedCornerShape(topStart = outer, bottomStart = outer, topEnd = 8.dp, bottomEnd = 8.dp)
+    else RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp, topEnd = outer, bottomEnd = outer)
+    val fg = if (enabled) content else c.onSurfaceVariant
+    Column(
+        Modifier.size(width = 60.dp, height = 64.dp).shadow(3.dp, shape)
+            .background(if (enabled) container else c.surfaceContainerHighest, shape).clip(shape)
             .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(start = 20.dp, end = 24.dp),
-        contentAlignment = Alignment.Center,
+            .semantics { contentDescription = description },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(painterResource(R.drawable.ic_download), null, Modifier.size(20.dp), tint = content)
-            Box(Modifier.width(8.dp))
-            Text("Scarica", color = content, style = type(14, 20, medium = true), maxLines = 1)
-        }
+        Icon(painterResource(icon), null, Modifier.size(24.dp), tint = fg)
+        Text(text, Modifier.padding(top = 2.dp), color = fg, style = type(11, 14, medium = true), maxLines = 1)
     }
 }

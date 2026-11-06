@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -149,27 +151,32 @@ fun FujiField(value: String, onValueChange: (String) -> Unit, hint: String, enab
 fun GroupButton(
     text: String, first: Boolean, container: Color, content: Color, onClick: () -> Unit, modifier: Modifier = Modifier,
     enabled: Boolean = true, icon: Int? = null, height: Dp = 56.dp, textSize: Int = 16,
+    /** Between two others of a group: 8 dp corners on both sides. */
+    middle: Boolean = false,
+    description: String? = null,
 ) {
     val c = MaterialTheme.colorScheme
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     val outer by animateDpAsState(if (pressed && enabled) 12.dp else 28.dp, tween(if (pressed) 120 else 220), label = "outer")
     val inner = 8.dp
-    val shape = if (first) RoundedCornerShape(topStart = outer, topEnd = inner, bottomEnd = inner, bottomStart = outer)
+    val shape = if (middle) RoundedCornerShape(inner)
+    else if (first) RoundedCornerShape(topStart = outer, topEnd = inner, bottomEnd = inner, bottomStart = outer)
     else RoundedCornerShape(topStart = inner, topEnd = outer, bottomEnd = outer, bottomStart = inner)
     val fg = if (enabled) content else c.onSurfaceVariant
     Box(
         modifier.height(height).clip(shape).background(if (enabled) container else c.surfaceContainerHighest)
             .clickable(interactionSource = source, indication = LocalIndication.current, enabled = enabled, role = Role.Button, onClick = onClick)
+            .then(if (description != null) Modifier.semantics { contentDescription = description } else Modifier)
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
                 Icon(painterResource(icon), null, Modifier.size(20.dp), tint = fg)
-                Box(Modifier.width(8.dp))
+                if (text.isNotEmpty()) Box(Modifier.width(8.dp))
             }
-            Text(text, color = fg, style = type(textSize, 20, medium = true), maxLines = 1, textAlign = TextAlign.Center)
+            if (text.isNotEmpty()) Text(text, color = fg, style = type(textSize, 20, medium = true), maxLines = 1, textAlign = TextAlign.Center)
         }
     }
 }

@@ -35,7 +35,7 @@ class PreviewUi(val name: String, val whenText: String, val bitmap: Bitmap?, val
  * the details in a panel at the bottom. A layer of MainActivity (the ComposeView previewArea), not a dialog.
  */
 @Composable
-fun PreviewScreen(ui: PreviewUi, onBack: () -> Unit, onSelect: () -> Boolean, onDownload: () -> Unit) {
+fun PreviewScreen(ui: PreviewUi, onBack: () -> Unit, onSelect: () -> Boolean, onDownload: () -> Unit, onUpload: () -> ImmichMark) {
     val c = MaterialTheme.colorScheme
     val bmp = remember(ui.bitmap) { ui.bitmap?.asImageBitmap() }
     Box(Modifier.fillMaxSize().background(Color.Black)) {
@@ -49,7 +49,7 @@ fun PreviewScreen(ui: PreviewUi, onBack: () -> Unit, onSelect: () -> Boolean, on
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(c.surfaceContainerLow)) {
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SheetHandle() }
-                DetailsContent(ui.details, onSelect, onDownload)
+                DetailsContent(ui.details, onSelect, onDownload, onUpload)
             }
         }
         // top bar over the picture
