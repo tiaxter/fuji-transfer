@@ -318,7 +318,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                     val slop = viewConfiguration.touchSlop
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
-                    // 0 undecided, 1 the picture (pinch, pan), 2 paging, 3 closing
+                    // 0 undecided, 1 the picture (pinch, pan), 2 paging, 3 closing (drag down), 4 details (drag up)
                     var mode = if (takingOver && offsetX != 0f) 2 else 0
                     var moved = false
                     val imageMode = sNow.imageVisible && sNow.cur != null
@@ -353,9 +353,10 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                             mode = when {
                                 imageMode && zoomNow.zoom > 1.02f -> 1
                                 abs(dx) > abs(dy) * 1.3f -> 2
+                                dy < 0 -> 4
                                 else -> 3
                             }
-                            DebugLog.detail("visore: gesto ${when (mode) { 1 -> "sposta la foto"; 2 -> "scorre le pagine"; else -> "chiude (su/giù)" }} " +
+                            DebugLog.detail("visore: gesto ${when (mode) { 1 -> "sposta la foto"; 2 -> "scorre le pagine"; 3 -> "chiude (giù)"; else -> "dettagli (su)" }} " +
                                 "dx=${dx.roundToInt()} dy=${dy.roundToInt()}")
                         }
                         val delta = ch.positionChange()
@@ -378,6 +379,11 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                                 offsetY += delta.y
                                 ch.consume()
                             }
+                            4 -> {
+                                // the picture only follows a little, with resistance, and never goes down
+                                offsetY = (offsetY + delta.y * 0.5f).coerceAtMost(0f)
+                                ch.consume()
+                            }
                         }
                         if (!ch.pressed) {
                             val v = tracker.calculateVelocity()
@@ -398,6 +404,14 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                                     DebugLog.detail("visore: rilascio offsetY=${offsetY.roundToInt()} h=$boxH vy=${v.y.roundToInt()} → " +
                                         if (far || flung) "chiude" else "torna a posto")
                                     if (far || flung) startClose() else springBack()
+                                }
+                                4 -> {
+                                    val far = -offsetY > 48.dp.toPx() / 2f || (ch.position.y - down.position.y) < -64.dp.toPx()
+                                    val flung = v.y < -minFling
+                                    DebugLog.detail("visore: rilascio su offsetY=${offsetY.roundToInt()} vy=${v.y.roundToInt()} → " +
+                                        if (far || flung) "apre i dettagli" else "torna a posto")
+                                    springBack()
+                                    if (far || flung) a.onInfo()
                                 }
                                 0 -> if (!moved && imageMode) {
                                     // a tap: one confirms after the double tap time, two zoom
