@@ -109,7 +109,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var dimmed by mutableStateOf(false)
     private var awakeArmed = false
     private val dimHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val dimRunnable = Runnable { if (awakeArmed) setDimmed(true) }
+    private val dimRunnable = Runnable { if (awakeArmed) applyDim(true) }
     /** A confirmation, over everything (null = none). */
     private var appDialog by mutableStateOf<AppDialog?>(null)
 
@@ -2128,11 +2128,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         } else if (!want && awakeArmed) {
             awakeArmed = false
             dimHandler.removeCallbacks(dimRunnable)
-            setDimmed(false)
+            applyDim(false)
         }
     }
 
-    private fun setDimmed(on: Boolean) {
+    private fun applyDim(on: Boolean) {
         if (dimmed == on) return
         dimmed = on
         val lp = window.attributes
@@ -2141,7 +2141,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
 
     private fun wake() {
-        setDimmed(false)
+        applyDim(false)
         if (awakeArmed) {
             dimHandler.removeCallbacks(dimRunnable)
             dimHandler.postDelayed(dimRunnable, 30_000)
