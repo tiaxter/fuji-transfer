@@ -195,7 +195,7 @@ fun UploadsScreen(onBack: () -> Unit, onSettings: () -> Unit, thumb: (String) ->
                 )
             }
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                items(shown, key = { it.key }) { row ->
+                items(shown, key = { it.state.name + "|" + it.key }) { row ->
                     UploadRow(row, snap, thumb(row.key)) { ImmichSync.retry(ctx, row.key); refresh() }
                 }
             }

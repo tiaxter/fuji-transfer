@@ -61,6 +61,9 @@ data class ConnectUi(
     val paired: Boolean = false,
     /** What the app knows of the camera's Wi-Fi link right now ("Wi-Fi non collegato", "Wi-Fi in avvio", ...). */
     val wifiTag: String = "",
+    /** The "Backup" card: Immich set up or not, and what it does ("Carichi tu dalla galleria · 3 in coda"). */
+    val backupLinked: Boolean = false,
+    val backupSub: String = "",
     val manualOpen: Boolean = false,
     val usbStatus: String = "Nessuna camera collegata",
 )
@@ -94,15 +97,7 @@ fun ConnectScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Fuji Transfer", Modifier.weight(1f), color = c.onSurface, style = type(22, 28, medium = true))
-            IconButton(onClick = a.onImmich) {
-                Icon(painterResource(R.drawable.ic_cloud_upload), contentDescription = "Invia a Immich", tint = c.onSurfaceVariant)
-            }
-            IconButton(onClick = a.onShareLog) {
-                Icon(painterResource(R.drawable.ic_share), contentDescription = "Condividi il registro", tint = c.onSurfaceVariant)
-            }
-            IconButton(onClick = a.onLog) {
-                Icon(painterResource(R.drawable.ic_log), contentDescription = "Registro tecnico", tint = c.onSurfaceVariant)
-            }
+            FujiButton("Registro", a.onLog, kind = ButtonKind.Tonal, height = 40.dp, icon = R.drawable.ic_log)
         }
 
         Column(
@@ -116,7 +111,7 @@ fun ConnectScreen(
         // footer
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             FujiButton(
-                if (ui.useWifi) "Connetti" else "Connetti via USB", a.onConnect, Modifier.fillMaxWidth(),
+                if (ui.useWifi) "Connetti alla camera" else "Connetti via USB", a.onConnect, Modifier.fillMaxWidth(),
                 kind = ButtonKind.Filled, enabled = ui.canConnect,
                 icon = if (ui.useWifi) R.drawable.ic_wifi else R.drawable.ic_usb,
             )
@@ -241,12 +236,18 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
     }
 
     Text(
+        "Backup", Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
+        color = c.primary, style = type(14, 20, medium = true),
+    )
+    BackupCard(ui.backupLinked, ui.backupSub, a.onImmich)
+
+    Text(
         "Come funziona", Modifier.padding(start = 4.dp, top = 20.dp, bottom = 4.dp),
         color = c.primary, style = type(14, 20, medium = true),
     )
-    HowStep(R.drawable.ic_bluetooth, "Trova la camera via Bluetooth", "Anche se è già abbinata a XApp")
-    HowStep(R.drawable.ic_wifi, "Le fa accendere il Wi-Fi", "Nome e password arrivano da soli")
-    HowStep(R.drawable.ic_photos, "Scegli le foto e scaricale", "Se il segnale cade, riprende da dove era")
+    HowStep(1, "Trova la camera via Bluetooth", "Anche se è già abbinata a XApp")
+    HowStep(2, "Le fa accendere il Wi‑Fi", "Nome e password arrivano da soli")
+    HowStep(3, "Scegli le foto e scaricale", "Se il segnale cade, riprende da dove era")
 
     // manual connection (Wi-Fi started from the camera menu)
     if (ui.manualOpen) {
@@ -269,15 +270,51 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
 }
 
 @Composable
-private fun HowStep(icon: Int, title: String, sub: String) {
+private fun HowStep(n: Int, title: String, sub: String) {
     val c = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp).clip(CircleShape).background(c.secondaryContainer).padding(10.dp)) {
-            Icon(painterResource(icon), null, Modifier.fillMaxSize(), tint = c.onSecondaryContainer)
+        Box(Modifier.size(40.dp).clip(CircleShape).background(c.secondaryContainer), contentAlignment = Alignment.Center) {
+            Text("$n", color = c.onSecondaryContainer, style = type(16, 24, medium = true))
         }
-        Column(Modifier.weight(1f).padding(start = 16.dp)) {
+        Column(Modifier.padding(start = 16.dp)) {
             Text(title, color = c.onSurface, style = type(16, 24))
             Text(sub, color = c.onSurfaceVariant, style = type(14, 20))
+        }
+    }
+}
+
+/** "Backup su Immich" (not set up: Collega) or "Immich · collegato" (Caricamenti), one tappable card. */
+@Composable
+private fun BackupCard(linked: Boolean, sub: String, onClick: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp)).background(if (linked) c.tertiaryContainer else c.surfaceContainer)
+            .clickable(role = Role.Button, onClick = onClick).padding(start = 14.dp, top = 14.dp, end = 14.dp, bottom = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(44.dp).clip(CircleShape).background(if (linked) c.tertiary else c.surfaceContainerHighest),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(painterResource(R.drawable.ic_immich), null, Modifier.size(24.dp), tint = if (linked) c.onTertiary else c.onSurfaceVariant)
+        }
+        val fg = if (linked) c.onTertiaryContainer else c.onSurface
+        Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
+            Text(if (linked) "Immich · collegato" else "Backup su Immich", color = fg, style = type(16, 22, medium = true))
+            Text(
+                if (linked) sub else "Facoltativo: copia le foto sul tuo server",
+                color = if (linked) c.onTertiaryContainer else c.onSurfaceVariant, style = type(14, 20),
+            )
+        }
+        Box(
+            Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).background(if (linked) c.tertiary else c.primary)
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                if (linked) "Caricamenti" else "Collega", color = if (linked) c.onTertiary else c.onPrimary,
+                style = type(14, 20, medium = true),
+            )
         }
     }
 }

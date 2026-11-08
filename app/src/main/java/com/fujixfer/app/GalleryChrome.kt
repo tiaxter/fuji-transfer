@@ -246,6 +246,8 @@ data class GalleryBottomUi(
     val snack: String = "",
     /** Second line of [snack]: when the queued files go up. */
     val snackSub: String = "Partono col Wi‑Fi, anche ad app chiusa",
+    /** A tip above the selection bar ("Tieni premuto e trascina…"), empty = none. */
+    val hint: String = "",
 )
 
 @Composable
@@ -288,6 +290,18 @@ fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Un
                 FujiButton("Annulla", onUndo, kind = ButtonKind.Text, height = 40.dp, contentColor = c.inversePrimary)
             }
         } else {
+            if (ui.hint.isNotEmpty()) {
+                Row(
+                    Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp).fillMaxWidth()
+                        .shadow(2.dp, RoundedCornerShape(16.dp)).background(c.inverseSurface, RoundedCornerShape(16.dp))
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(painterResource(R.drawable.ic_select_all), null, Modifier.size(20.dp), tint = c.inverseOnSurface)
+                    Text(ui.hint, Modifier.padding(start = 10.dp), color = c.inverseOnSurface, style = type(14, 20))
+                }
+            }
             // floating selection bar (Expressive): a pill with the count, then the joined Carica | Scarica pair
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 val pill = RoundedCornerShape(32.dp)

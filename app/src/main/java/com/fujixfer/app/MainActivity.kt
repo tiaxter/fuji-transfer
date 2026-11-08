@@ -88,6 +88,28 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var immichOpen by mutableStateOf(false)
     /** "Caricamenti": the Immich queue file by file, over everything but the dialogs. */
     private var uploadsOpen by mutableStateOf(false)
+    /** "Download finito" (or the drop card), over the gallery after a batch ends. */
+    private var doneOpen by mutableStateOf(false)
+    private var doneUi by mutableStateOf(DoneUi())
+    /** The last batch already shown or ignored (TransferState.lastBatch.id). */
+    private var seenBatchId = 0L
+    /** After "Riconnetti e riprendi": the files to fetch once the camera is back (keys name|date), null = none. */
+    private var resumeKeys: List<String>? = null
+    /** 0 = disconnecting first, 1 = connecting, 2 = connected (waiting for the listing). */
+    private var resumeStep = 0
+    private var resumePosted = false
+    /** "Annullare il download?" and "Scollegare la X-T5?" sheets. */
+    private var cancelInfo by mutableStateOf<CancelInfo?>(null)
+    private var disconnectInfo by mutableStateOf<DisconnectInfo?>(null)
+    /** When the camera got connected (for "Collegata da 6 min"). */
+    private var connectedAtMs = 0L
+    private var wasConnected = false
+    // "Tieni lo schermo acceso": while a batch runs the screen stays on, and after a while without touches the
+    // light goes to the minimum behind an almost black screen (DimScreen)
+    private var dimmed by mutableStateOf(false)
+    private var awakeArmed = false
+    private val dimHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val dimRunnable = Runnable { if (awakeArmed) setDimmed(true) }
     /** A confirmation, over everything (null = none). */
     private var appDialog by mutableStateOf<AppDialog?>(null)
 
@@ -248,9 +270,19 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var dragBase: Set<Long> = emptySet()
     private var dragAnchor = -1
     private var dragAdd = true
+    /** The user has selected by dragging once: the hint about it is no longer shown. */
+    private val dragUsedInit by lazy { getSharedPreferences("fuji", MODE_PRIVATE).getBoolean("dragUsed", false) }
+    private var dragUsedSet: Boolean? = null
+    private var dragUsed: Boolean
+        get() = dragUsedSet ?: dragUsedInit
+        set(v) { dragUsedSet = v }
     private var dragLast = -1
 
     private fun dragStart(i: ObjectInfo) {
+        if (!dragUsed) {
+            dragUsed = true
+            getSharedPreferences("fuji", MODE_PRIVATE).edit().putBoolean("dragUsed", true).apply()
+        }
         dragBase = HashSet(selected)
         dragAnchor = flatIndex[i.handle] ?: -1
         dragAdd = i.handle !in selected // started on a selected cell: the drag removes
@@ -344,6 +376,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         Thumbs.init(this)
         Previews.init(this)
         bindViews()
+        seenBatchId = TransferState.lastBatch?.id ?: 0L
         setContent { FujiTheme { AppRoot() } }
         requestRuntimePermissions()
         val filter = IntentFilter(ACTION_USB_PERMISSION)
@@ -405,6 +438,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         if (uploadsOpen) {
             uploadsOpen = false
+            return
+        }
+        if (doneOpen) {
+            closeDone()
             return
         }
         if (previewOpen) {
@@ -469,6 +506,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
 
     override fun onDestroy() {
+        dimHandler.removeCallbacksAndMessages(null)
         viewer?.close() // releases the player
         sideDecoder.shutdownNow()
         unregisterReceiver(usbReceiver)
@@ -581,7 +619,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         onManualConnect = { startWifi() },
                         onLog = { showLog() },
                         onShareLog = { shareLog() },
-                        onImmich = { showImmich() },
+                        onImmich = { showUploads() },
                     ),
                 )
             }
@@ -623,7 +661,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         onBack = { hideDownloads() },
                         onCancel = { confirmCancel() },
                         onBackground = { hideDownloads() },
+                        keepAwake = keepAwakeState,
+                        onKeepAwake = { setKeepAwake(it) },
                     )
+                }
+            }
+            Layer(doneOpen) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
+                    DownloadDoneScreen(doneUi, doneActions)
                 }
             }
             Layer(dateOpen) {
@@ -724,7 +769,23 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 },
             )
         }
+        cancelInfo?.let { info ->
+            CancelSheet(
+                info,
+                onKeep = { cancelInfo = null },
+                onCancel = { cancelInfo = null; sendAction(TransferService.ACTION_CANCEL) },
+                onFinishCurrent = { cancelInfo = null; sendAction(TransferService.ACTION_STOP_AFTER) },
+            )
+        }
+        disconnectInfo?.let { info ->
+            DisconnectSheet(
+                info,
+                onStay = { disconnectInfo = null },
+                onDisconnect = { disconnectInfo = null; sendAction(TransferService.ACTION_DISCONNECT) },
+            )
+        }
         AppDialogs()
+        if (dimmed) DimScreen(downloadUi) { wake() }
         }
     }
 
@@ -737,6 +798,19 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private fun confirmDisconnect() {
         val st = TransferState
         val downloading = st.busy && st.progressName.isNotEmpty()
+        if (!downloading) {
+            val min = ((System.currentTimeMillis() - connectedAtMs) / 60_000).coerceAtLeast(0)
+            val usb = st.connectionLabel == "USB"
+            disconnectInfo = DisconnectInfo(
+                camera = st.cameraName.ifEmpty { "camera" },
+                since = (if (connectedAtMs == 0L) "Collegata" else if (min < 1) "Collegata da meno di un minuto"
+                else "Collegata da $min min") + " · " + (if (usb) "USB" else "Wi‑Fi"),
+                usb = usb,
+                immichQueued = if (ImmichSync.settings(this).configured) immichQueued.size else 0,
+                wifiOnly = ImmichSync.settings(this).wifiOnly,
+            )
+            return
+        }
         appDialog = AppDialog.Confirm(
             title = if (downloading) "Interrompere i download?" else "Disconnettere la camera?",
             message = if (downloading) "Mancano ${(st.batchCount - st.batchIndex + 1).coerceAtLeast(1)} file. " +
@@ -752,15 +826,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private fun confirmCancel() {
         val st = TransferState
         if (!(st.busy && st.progressName.isNotEmpty())) return
-        val left = (st.batchCount - st.batchIndex + 1).coerceAtLeast(1)
-        appDialog = AppDialog.Confirm(
-            title = "Annullare i download?",
-            message = (if (left == 1) "Manca 1 file." else "Mancano $left file.") +
-                " Quelli già scaricati restano nel telefono, quelli mancanti restano selezionati: " +
-                "puoi riprendere quando vuoi con «Scarica».",
-            confirm = "Annulla download",
-            dismiss = "Continua",
-            onConfirm = { sendAction(TransferService.ACTION_CANCEL) },
+        val pct = if (st.progressTotal > 0) (st.progressDone * 100 / st.progressTotal).toInt().coerceIn(0, 99) else 0
+        cancelInfo = CancelInfo(
+            doneFiles = (st.batchIndex - 1).coerceAtLeast(0),
+            doneSize = formatSize(st.batchBytesDone),
+            current = st.progressName,
+            currentPercent = pct,
+            currentSize = "${formatSize(st.progressDone)} di ${formatSize(st.progressTotal)}",
+            queued = (st.batchCount - st.batchIndex).coerceAtLeast(0),
         )
     }
 
@@ -837,12 +910,15 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         } else {
             refreshVisibleRows(animate = false) // progress ticks: only what is on screen, no full rebind
         }
-        if (lastBusy && !st.busy && st.status.startsWith("Finito") && !st.statusIsError) {
-            // a batch went through: say so, and where the files are (the screen of the download just closed)
-            android.widget.Toast.makeText(this, st.status + "\nFoto e video in Fujifilm, RAW in Download/Fujifilm",
-                android.widget.Toast.LENGTH_LONG).show()
+        val ended = st.lastBatch?.takeIf { it.id != seenBatchId }
+        if (ended != null && !st.busy) {
+            seenBatchId = ended.id
+            onBatchEnded(ended, wasVisible = showDownload)
         }
         lastBusy = st.busy
+        if (st.connected && !wasConnected) connectedAtMs = System.currentTimeMillis()
+        wasConnected = st.connected
+        resumeStepCheck()
 
         // which screen
         if (st.busy) dismissedError = null // a new attempt: its error, if any, must be shown
@@ -869,6 +945,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             lastT = 0L
             speed = 0.0
         }
+        applyAwake(downloading)
     }
 
     // ------------------------------------------------------------------ connect screen
@@ -885,6 +962,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             if (cam == null) "Nessuna camera collegata" else "Collegata: " + (cam.productName ?: "camera USB")
         }
         val paired = pairing()
+        val immichSettings = ImmichSync.settings(this)
         connectUi = ConnectUi(
             useWifi = useWifi,
             canConnect = !st.connected && !st.busy,
@@ -902,6 +980,16 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             },
             manualOpen = manualOpen,
             usbStatus = usbStatus,
+            backupLinked = immichSettings.configured,
+            backupSub = run {
+                val how = when (immichSettings.mode) {
+                    ImmichSync.MODE_AUTO -> "Dopo ogni download"
+                    ImmichSync.MODE_OFFER -> "Chiede a fine download"
+                    else -> "Carichi tu dalla galleria"
+                }
+                val waiting = immichQueued.size
+                if (waiting > 0) "$how · $waiting in coda" else how
+            },
         )
     }
 
@@ -1157,6 +1245,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             // files not on the phone yet need the camera to fetch them first
             canUpload = selObjs.isNotEmpty() && (st.connected || selObjs.all { key(it) in done }),
             snack = if (selObjs.isEmpty()) uploadSnack else "",
+            hint = if (selObjs.isNotEmpty() && selObjs.size < 3 && !dragUsed) "Tieni premuto e trascina per scegliere più foto in un colpo" else "",
             snackSub = if (ImmichSync.settings(this).wifiOnly) "Partono col Wi‑Fi, anche ad app chiusa"
             else "Partono appena c'è la rete, anche ad app chiusa",
         )
@@ -1885,6 +1974,191 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             dismiss = "Annulla",
             onConfirm = { DebugLog.clear() },
         )
+    }
+
+    // ------------------------------------------------------------------ end of a batch ("Download finito")
+
+    private val doneActions by lazy {
+        DoneActions(
+            onBack = { closeDone() },
+            onNo = { doneUi = doneUi.copy(immich = DoneImmich.Declined) },
+            onUpload = { list ->
+                ImmichSync.enqueue(this, list.map { key(it) })
+                ImmichSync.schedule(this)
+                readImmichMarks()
+                doneUi = doneUi.copy(immich = DoneImmich.Queued, queuedCount = list.size)
+            },
+            onSeeUploads = { closeDone(); uploadsOpen = true },
+            onReconnect = { resumeAfterDrop() },
+            onKeepAwake = { setKeepAwake(it) },
+            size = { info -> if (kindOf(info) == Kind.RAW) formatSize(info.size) + " · RAW" else formatSize(info.size) },
+        )
+    }
+
+    private fun closeDone() {
+        doneOpen = false
+        onChanged()
+    }
+
+    /**
+     * A batch ended. Dropped because the camera switched its Wi-Fi off: the drop card, always. Otherwise, if its
+     * screen was on view: "Download finito", with the Immich question in "Chiedi a fine download". A batch that
+     * ran behind the gallery ("Continua in background", "Carica") only gets the toast; a cancelled one nothing.
+     */
+    private fun onBatchEnded(b: BatchResult, wasVisible: Boolean) {
+        if (b.cancelled) return
+        val sec = (b.millis / 1000).coerceAtLeast(1)
+        val raw = b.saved.any { kindOf(it) == Kind.RAW }
+        val where = if (raw) "foto in Fujifilm, RAW in Download/Fujifilm" else "Galleria › Fujifilm"
+        val s = ImmichSync.settings(this)
+        val base = DoneUi(
+            id = b.id, saved = b.saved, batchSize = b.saved.size + b.left.size, failed = b.failed,
+            summary = "${formatSize(b.bytes)} in ${formatDuration(sec)} · $where",
+            keepAwake = keepAwakeState,
+        )
+        if (b.cameraWifiOff) {
+            doneUi = base.copy(
+                dropped = true, droppedScreenOff = b.screenOff, partialName = b.partialName,
+                partialPercent = b.partialPercent, left = b.left.size,
+            )
+            pendingResume = b.left
+            doneOpen = true
+            return
+        }
+        if (!wasVisible || b.saved.isEmpty()) {
+            if (b.saved.isNotEmpty() && b.failed == 0) {
+                android.widget.Toast.makeText(this, "Finito: ${b.saved.size} file scaricati\nFoto e video in Fujifilm, RAW in Download/Fujifilm",
+                    android.widget.Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+        doneUi = base.copy(
+            immich = when {
+                !s.configured -> DoneImmich.None
+                b.immichQueued > 0 -> DoneImmich.Queued
+                s.mode == ImmichSync.MODE_OFFER -> DoneImmich.Ask
+                else -> DoneImmich.None
+            },
+            queuedCount = b.immichQueued,
+        )
+        doneOpen = true
+    }
+
+    /** The files the drop card would fetch again. */
+    private var pendingResume: List<ObjectInfo> = emptyList()
+
+    /**
+     * "Riconnetti e riprendi": the link to the camera is dead (its Wi-Fi is off), so it is closed, a new
+     * connection is made, and once the camera's list is read the files left are downloaded again; the one cut
+     * halfway goes on from where it stopped.
+     */
+    private fun resumeAfterDrop() {
+        resumeKeys = pendingResume.map { key(it) }
+        resumeStep = 0
+        resumePosted = false
+        doneOpen = false
+        DebugLog.add("riconnessione per riprendere ${pendingResume.size} file")
+        if (TransferState.connected || TransferState.busy) sendAction(TransferService.ACTION_DISCONNECT)
+        onChanged()
+    }
+
+    private fun resumeStepCheck() {
+        val keys = resumeKeys ?: return
+        val st = TransferState
+        when (resumeStep) {
+            0 -> if (!st.connected && !st.busy && !resumePosted) {
+                // the teardown ends with the service stopping itself: give it a moment before starting again
+                resumePosted = true
+                dimHandler.postDelayed({
+                    resumeStep = 1
+                    startBle(TransferService.ACTION_CONNECT_BLE)
+                }, 1500)
+            }
+            1 -> when {
+                st.connected -> resumeStep = 2
+                !st.busy && st.statusIsError -> {
+                    resumeKeys = null // the error screen says why
+                    DebugLog.add("ripresa annullata: connessione non riuscita")
+                }
+            }
+            2 -> if (st.connected && !st.busy && !st.listing) {
+                resumeKeys = null
+                val handles = st.objects.filter { key(it) in keys }.map { it.handle }
+                if (handles.isEmpty()) {
+                    android.widget.Toast.makeText(this, "I file da riprendere non sono più sulla camera", android.widget.Toast.LENGTH_LONG).show()
+                } else {
+                    downloadsHidden = false
+                    startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, handles.toLongArray()) }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ "Tieni lo schermo acceso"
+
+    private var keepAwakeState by mutableStateOf(true)
+    private var keepAwakeRead = false
+
+    private fun keepAwakePref(): Boolean {
+        if (!keepAwakeRead) {
+            keepAwakeRead = true
+            keepAwakeState = getSharedPreferences("fuji", MODE_PRIVATE).getBoolean("keepAwake", true)
+        }
+        return keepAwakeState
+    }
+
+    private fun setKeepAwake(on: Boolean) {
+        keepAwakeRead = true
+        keepAwakeState = on
+        getSharedPreferences("fuji", MODE_PRIVATE).edit().putBoolean("keepAwake", on).apply()
+        doneUi = doneUi.copy(keepAwake = on)
+        DebugLog.add(if (on) "schermo acceso durante i download: sì" else "schermo acceso durante i download: no")
+        onChanged()
+    }
+
+    /** While a batch runs (and the option is on) the screen stays on; 30 s without touches dims it. */
+    private fun applyAwake(downloading: Boolean) {
+        val want = downloading && keepAwakePref()
+        if (want) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if (want && !awakeArmed) {
+            awakeArmed = true
+            dimHandler.removeCallbacks(dimRunnable)
+            dimHandler.postDelayed(dimRunnable, 30_000)
+        } else if (!want && awakeArmed) {
+            awakeArmed = false
+            dimHandler.removeCallbacks(dimRunnable)
+            setDimmed(false)
+        }
+    }
+
+    private fun setDimmed(on: Boolean) {
+        if (dimmed == on) return
+        dimmed = on
+        val lp = window.attributes
+        lp.screenBrightness = if (on) 0.01f else android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+        window.attributes = lp
+    }
+
+    private fun wake() {
+        setDimmed(false)
+        if (awakeArmed) {
+            dimHandler.removeCallbacks(dimRunnable)
+            dimHandler.postDelayed(dimRunnable, 30_000)
+        }
+    }
+
+    /** Any touch puts the dimming off again; while dimmed, the first tap only brings the light back. */
+    override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (dimmed) {
+            if (ev.actionMasked == android.view.MotionEvent.ACTION_UP) wake()
+            return true
+        }
+        if (awakeArmed && ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) {
+            dimHandler.removeCallbacks(dimRunnable)
+            dimHandler.postDelayed(dimRunnable, 30_000)
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     private fun showImmich() {

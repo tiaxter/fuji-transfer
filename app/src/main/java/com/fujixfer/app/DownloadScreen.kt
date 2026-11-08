@@ -83,6 +83,8 @@ fun DownloadScreen(
     onBack: () -> Unit,
     onCancel: () -> Unit,
     onBackground: () -> Unit,
+    keepAwake: Boolean = true,
+    onKeepAwake: (Boolean) -> Unit = {},
 ) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize()) {
@@ -155,6 +157,8 @@ fun DownloadScreen(
                 FileRow(info, current, finished, pct, rowMeta(info, current, finished), ui.thumbVersion)
             }
         }
+
+        KeepAwakeRow(keepAwake, onKeepAwake, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
 
         // cancel / keep downloading in the background (back to the gallery): connected pair
         Row(
