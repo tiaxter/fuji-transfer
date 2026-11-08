@@ -45,7 +45,7 @@ data class DetailsUi(
 )
 
 /** Where a camera file stands with Immich. */
-enum class ImmichMark(val label: String) { None("Non ancora"), Queued("In coda · Wi‑Fi di casa"), Done("Sì") }
+enum class ImmichMark(val label: String) { None("Non ancora"), Queued("In coda"), Done("Sì") }
 
 /**
  * The details as a real sheet over the full-size viewer (a window of its own: the viewer stays visible and live

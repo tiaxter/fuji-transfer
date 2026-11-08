@@ -70,6 +70,11 @@ object TransferState {
     @Volatile var viewFile: String? = null
     @Volatile var viewError: String = ""
 
+    /** The last download batch that ended (the "Download finito" screen reads it); null until one ends. */
+    @Volatile var lastBatch: BatchResult? = null
+    /** "Finisci il file, poi fermati": the file in progress ends, then the batch stops. */
+    @Volatile var stopAfterCurrent: Boolean = false
+
     private val listeners = CopyOnWriteArrayList<Listener>()
     private val main = Handler(Looper.getMainLooper())
 
@@ -96,3 +101,25 @@ object TransferState {
 
 /** One day of the card: "yyyyMMdd" and how many files it holds. */
 data class DayGroup(val day: String, val count: Int)
+
+/**
+ * How a download batch ended. [saved]: files now on the phone. [left]: files of the batch not saved (failed,
+ * cancelled, or not started). [cameraWifiOff]: the batch stopped because the camera reported its access point
+ * off over Bluetooth; [screenOff]: the phone's screen was off at that moment. [partialName]/[partialPercent]: the
+ * file that was being written when it stopped (its bytes stay and the next download resumes from there).
+ */
+class BatchResult(
+    val id: Long,
+    val saved: List<ObjectInfo>,
+    val left: List<ObjectInfo>,
+    val failed: Int,
+    val cancelled: Boolean,
+    val stoppedAfterFile: Boolean,
+    val bytes: Long,
+    val millis: Long,
+    val immichQueued: Int,
+    val cameraWifiOff: Boolean,
+    val screenOff: Boolean,
+    val partialName: String,
+    val partialPercent: Int,
+)

@@ -59,6 +59,8 @@ class TransferService : Service() {
         private const val PREF_NO_QUEUE_PREFIX = "no_queue_"
         const val ACTION_DOWNLOAD = "com.fujixfer.app.DOWNLOAD"
         const val ACTION_CANCEL = "com.fujixfer.app.CANCEL"
+        /** "Finisci il file, poi fermati": the batch stops after the file in progress. */
+        const val ACTION_STOP_AFTER = "com.fujixfer.app.STOP_AFTER"
         /** Fetch one original into the app cache to show it full size (long press on a photo). */
         const val ACTION_VIEW = "com.fujixfer.app.VIEW"
         const val ACTION_VIEW_CANCEL = "com.fujixfer.app.VIEW_CANCEL"
@@ -165,6 +167,11 @@ class TransferService : Service() {
         val cmd = intent ?: return START_NOT_STICKY
         when (cmd.action) {
             ACTION_CANCEL -> cancelRequested = true
+            ACTION_STOP_AFTER -> {
+                TransferState.stopAfterCurrent = true
+                DebugLog.add("» il lotto si ferma dopo il file in corso")
+                TransferState.publish()
+            }
             ACTION_DISCONNECT -> {
                 // The io thread may be stuck in the connection (Bluetooth, Wi-Fi request, socket): tear down from
                 // a thread of its own so the blocked calls fail at once and the screen answers right away.
@@ -1034,6 +1041,7 @@ class TransferService : Service() {
             return
         }
         cancelRequested = false
+        TransferState.stopAfterCurrent = false
         TransferState.busy = true
         // .part files of the old two-step save (download here, then copy): no longer used
         File(getExternalFilesDir(null), "incoming").takeIf { it.exists() }?.deleteRecursively()
@@ -1048,6 +1056,13 @@ class TransferService : Service() {
         TransferState.batchBytesDone = 0
         var ok = 0
         var failed = 0
+        val saved = ArrayList<ObjectInfo>()
+        var stoppedAfter = false
+        // the camera ended the link (access point off over Bluetooth) while a file was on its way
+        var droppedByCamera = false
+        var droppedScreenOff = false
+        var partialName = ""
+        var partialPercent = 0
         if (wifiNetwork != null) DebugLog.add("  " + wifiLinkSummary())
         val batchStart = System.nanoTime()
         var batchBytes = 0L
@@ -1061,6 +1076,11 @@ class TransferService : Service() {
         try {
             for ((i, listed) in wanted.withIndex()) {
                 if (cancelRequested) break
+                if (TransferState.stopAfterCurrent && i > 0) {
+                    stoppedAfter = true
+                    DebugLog.add("  fermato dopo ${wanted[i - 1].filename}, come chiesto")
+                    break
+                }
                 runPendingPreviews() // the viewer open during a batch: its previews between two files
                 val fileStart = System.nanoTime()
                 TransferState.batchIndex = i + 1
@@ -1077,6 +1097,7 @@ class TransferService : Service() {
                     TransferState.progressTotal = info.size
                     saveToMediaStore(eng, info)
                     markDone(info)
+                    saved.add(info)
                     TransferState.batchBytesDone += info.size
                     ok++
                     val st = eng.lastStats()
@@ -1088,6 +1109,18 @@ class TransferService : Service() {
                 } catch (e: IOException) {
                     failed++
                     setStatus("${listed.filename}: ${e.message}", error = true)
+                    if (cameraWifiOff) {
+                        // the camera switched its Wi-Fi off: the next files cannot come either
+                        droppedByCamera = true
+                        droppedScreenOff = screenOff
+                        val total = TransferState.progressTotal
+                        if (TransferState.progressDone > 0 && total > 0) {
+                            partialName = listed.filename
+                            partialPercent = (TransferState.progressDone * 100 / total).toInt().coerceIn(0, 99)
+                        }
+                        DebugLog.add("  lotto fermato: la camera ha spento il Wi-Fi" + if (screenOff) " (schermo del telefono spento)" else "")
+                        break
+                    }
                 }
             }
         } finally {
@@ -1100,16 +1133,36 @@ class TransferService : Service() {
                     ok, batchBytes / 1e6, total / 1e9, batchBytes / 1e6 / (total / 1e9), batchTransfer / 1e9,
                     (total - batchTransfer) / 1e9))
             }
+            val immichQueued = if (ok > 0) ImmichSync.afterDownload(this, saved.map { doneKey(it) }) else 0
+            if (ok > 0) ImmichSync.schedule(this) // runs when the phone is back on a normal network
+            val savedHandles = saved.mapTo(HashSet()) { it.handle }
+            TransferState.lastBatch = BatchResult(
+                id = System.nanoTime(),
+                saved = saved.toList(),
+                left = TransferState.batch.filter { it.handle !in savedHandles },
+                failed = failed,
+                cancelled = cancelRequested,
+                stoppedAfterFile = stoppedAfter,
+                bytes = saved.sumOf { it.size },
+                millis = total / 1_000_000,
+                immichQueued = immichQueued,
+                cameraWifiOff = droppedByCamera,
+                screenOff = droppedScreenOff,
+                partialName = partialName,
+                partialPercent = partialPercent,
+            )
+            TransferState.stopAfterCurrent = false
             TransferState.busy = false
             TransferState.progressName = ""
             val msg = when {
                 cancelRequested -> "Annullato ($ok scaricati)"
+                stoppedAfter -> "Fermato: $ok file scaricati"
+                droppedByCamera -> "Interrotto: la camera ha spento il Wi-Fi ($ok scaricati)"
                 failed > 0 -> "Finito: $ok scaricati, $failed con errori"
                 else -> "Finito: $ok file scaricati"
             }
             setStatus(msg, error = failed > 0)
             updateNotification(msg, 0, 0, force = true)
-            if (ok > 0) ImmichSync.schedule(this) // runs when the phone is back on a normal network
         }
     }
 

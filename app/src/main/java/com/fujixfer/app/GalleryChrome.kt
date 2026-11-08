@@ -244,6 +244,8 @@ data class GalleryBottomUi(
     val canUpload: Boolean = false,
     /** After "Carica", with nothing selected: "5 foto in coda per Immich" with Annulla ("" = none). */
     val snack: String = "",
+    /** Second line of [snack]: when the queued files go up. */
+    val snackSub: String = "Partono col Wi‑Fi, anche ad app chiusa",
 )
 
 @Composable
@@ -281,7 +283,7 @@ fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Un
                 Icon(painterResource(R.drawable.ic_cloud_queue), null, Modifier.size(24.dp), tint = c.inverseOnSurface)
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text(ui.snack, color = c.inverseOnSurface, style = type(14, 20, medium = true), maxLines = 1)
-                    Text("Partono col Wi‑Fi di casa, anche ad app chiusa", color = c.inverseOnSurface.copy(alpha = 0.85f), style = type(12, 16), maxLines = 2)
+                    Text(ui.snackSub, color = c.inverseOnSurface.copy(alpha = 0.85f), style = type(12, 16), maxLines = 2)
                 }
                 FujiButton("Annulla", onUndo, kind = ButtonKind.Text, height = 40.dp, contentColor = c.inversePrimary)
             }

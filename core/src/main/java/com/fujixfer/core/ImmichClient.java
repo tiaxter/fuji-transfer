@@ -33,6 +33,11 @@ public final class ImmichClient {
         UPLOADED, DUPLICATE
     }
 
+    /** Bytes of the file body sent so far, during {@link #sync}'s upload (not called for a duplicate). */
+    public interface Progress {
+        void sent(long done, long total);
+    }
+
     /** {@code permanent}: retrying will not help (wrong key, wrong address, file refused); otherwise try later. */
     public static final class ImmichException extends IOException {
         public final int code;
@@ -54,6 +59,8 @@ public final class ImmichClient {
     private final String deviceId;
     public int connectTimeoutMs = 10_000;
     public int readTimeoutMs = 300_000;
+    /** Told while a file goes up; null = nobody listens. */
+    public volatile Progress progress;
 
     /** {@code baseUrl}: "http://host:2283" or the same with "/api"; a missing scheme means http. */
     public ImmichClient(String baseUrl, String apiKey, String deviceId) {
@@ -193,6 +200,8 @@ public final class ImmichClient {
             while ((n = in.read(buf)) >= 0) {
                 o.write(buf, 0, n);
                 sent += n;
+                Progress p = progress;
+                if (p != null) p.sent(sent, len);
             }
             if (sent != len) throw new IOException("il file è cambiato durante l'invio");
             o.write(tail);

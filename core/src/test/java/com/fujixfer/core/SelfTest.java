@@ -1476,8 +1476,12 @@ public final class SelfTest {
                     c.sync("IMG_9999.JPG", bytesSource(a), t, t) == ImmichClient.Outcome.DUPLICATE);
             check("a duplicate sends no file", received.size() == 1 && checks.get() == 3);
 
+            long[] seen = {0, 0};
+            c.progress = (done, total) -> { seen[0] = done; seen[1] = total; };
             check("another file is uploaded", c.sync("DSCF0002.JPG", bytesSource(b), t, t) == ImmichClient.Outcome.UPLOADED
                     && received.size() == 2 && java.util.Arrays.equals(received.get(1), b));
+            check("upload progress reaches the whole file", seen[0] == b.length && seen[1] == b.length);
+            c.progress = null;
 
             check("server version", c.version().equals("1.118.2"));
             check("photos and videos of the account", c.assetCount() == 12480);

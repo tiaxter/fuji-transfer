@@ -86,6 +86,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     /** The "Registro tecnico" screen, over everything but the dialogs. */
     private var logOpen by mutableStateOf(false)
     private var immichOpen by mutableStateOf(false)
+    /** "Caricamenti": the Immich queue file by file, over everything but the dialogs. */
+    private var uploadsOpen by mutableStateOf(false)
     /** A confirmation, over everything (null = none). */
     private var appDialog by mutableStateOf<AppDialog?>(null)
 
@@ -401,6 +403,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             immichOpen = false
             return
         }
+        if (uploadsOpen) {
+            uploadsOpen = false
+            return
+        }
         if (previewOpen) {
             previewOpen = false // the offline preview is over everything
             return
@@ -673,15 +679,17 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             Layer(immichOpen) {
                 androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
                     ImmichScreen(
-                        onBack = { immichOpen = false },
-                        onSaved = { ready ->
-                            immichOpen = false
-                            android.widget.Toast.makeText(
-                                this@MainActivity,
-                                if (ready) "Immich: le foto partono appena c'è la rete giusta" else "Immich: invio spento",
-                                android.widget.Toast.LENGTH_SHORT,
-                            ).show()
-                        },
+                        onBack = { immichOpen = false; onChanged() },
+                        onUploads = { immichOpen = false; uploadsOpen = true },
+                    )
+                }
+            }
+            Layer(uploadsOpen) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
+                    UploadsScreen(
+                        onBack = { uploadsOpen = false; onChanged() },
+                        onSettings = { uploadsOpen = false; immichOpen = true },
+                        thumb = { k -> TransferState.objects.firstOrNull { key(it) == k }?.let { Thumbs.get(it) } },
                     )
                 }
             }
@@ -1149,6 +1157,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             // files not on the phone yet need the camera to fetch them first
             canUpload = selObjs.isNotEmpty() && (st.connected || selObjs.all { key(it) in done }),
             snack = if (selObjs.isEmpty()) uploadSnack else "",
+            snackSub = if (ImmichSync.settings(this).wifiOnly) "Partono col Wi‑Fi, anche ad app chiusa"
+            else "Partono appena c'è la rete, anche ad app chiusa",
         )
         galleryTopUi = galleryTopUi.copy(allSelected = files.isNotEmpty() && files.all { it.handle in selected })
     }
@@ -1879,6 +1889,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     private fun showImmich() {
         immichOpen = true
+    }
+
+    /** The Backup card and "Vedi": the uploads list once a server is set up, its settings before. */
+    private fun showUploads() {
+        if (ImmichSync.settings(this).configured) uploadsOpen = true else immichOpen = true
     }
 
     private fun showLog() {
