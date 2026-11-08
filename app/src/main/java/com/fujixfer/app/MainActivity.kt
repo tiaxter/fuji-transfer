@@ -584,7 +584,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 ErrorScreen(
                     ui = errorUi,
                     onBack = { dismissedError = TransferState.status; onChanged() },
-                    onShare = { shareLog() },
+                    onCopy = { copyLog(DebugLog.text().lines().filter { it.isNotBlank() }.takeLast(300).joinToString("\n")) },
                     onRetry = { dismissedError = TransferState.status; connectClicked() },
                     onRepair = { dismissedError = TransferState.status; startBle(TransferService.ACTION_PAIR_BLE) },
                 )
@@ -882,10 +882,16 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             canConnect = !st.connected && !st.busy,
             cameraName = paired?.name?.ifEmpty { "Fujifilm" } ?: "Fujifilm",
             pairTag = if (paired != null) "Abbinata" else "Usa l'abbinamento di XApp",
-            hint = if (paired != null) "Accendi la camera e tocca Connetti."
+            hint = if (paired != null) ""
             else "Se la camera non è mai stata abbinata a questo telefono, usa «Abbina nuova camera» " +
                 "(sulla camera: Bluetooth › Registrazione abbinamento).",
             paired = paired != null,
+            // only what the app knows: its own link to the camera's network, not the camera's radio
+            wifiTag = when {
+                st.connected && st.connectionLabel != "USB" -> "Wi-Fi collegato"
+                st.busy -> "Wi-Fi in avvio"
+                else -> "Wi-Fi non collegato"
+            },
             manualOpen = manualOpen,
             usbStatus = usbStatus,
         )
@@ -920,9 +926,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     // ------------------------------------------------------------------ error screen
 
     private fun updateError() {
-        errorUi = ErrorUi(
-            message = TransferState.status,
-            log = DebugLog.text().lines().filter { it.isNotBlank() }.takeLast(6).joinToString("\n")
+        errorUi = errorUiFor(
+            TransferState.status,
+            DebugLog.text().lines().filter { it.isNotBlank() }.takeLast(6).joinToString("\n")
                 .ifEmpty { "Il registro è vuoto." },
         )
     }

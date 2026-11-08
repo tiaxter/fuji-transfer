@@ -156,14 +156,14 @@ fun DownloadScreen(
             }
         }
 
-        // cancel / back to the gallery: connected pair
+        // cancel / keep downloading in the background (back to the gallery): connected pair
         Row(
             Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             PairButton("Annulla", first = true, container = c.surfaceContainerHighest, content = c.onSurface,
                 onClick = onCancel, modifier = Modifier.weight(1f))
-            PairButton("Torna alla galleria", first = false, container = c.secondaryContainer, content = c.onSecondaryContainer,
+            PairButton("Continua in background", first = false, container = c.secondaryContainer, content = c.onSecondaryContainer,
                 onClick = onBackground, modifier = Modifier.weight(1f))
         }
     }

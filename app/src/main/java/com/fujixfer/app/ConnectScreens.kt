@@ -59,6 +59,8 @@ data class ConnectUi(
     val pairTag: String = "",
     val hint: String = "",
     val paired: Boolean = false,
+    /** What the app knows of the camera's Wi-Fi link right now ("Wi-Fi non collegato", "Wi-Fi in avvio", ...). */
+    val wifiTag: String = "",
     val manualOpen: Boolean = false,
     val usbStatus: String = "Nessuna camera collegata",
 )
@@ -116,6 +118,7 @@ fun ConnectScreen(
             FujiButton(
                 if (ui.useWifi) "Connetti" else "Connetti via USB", a.onConnect, Modifier.fillMaxWidth(),
                 kind = ButtonKind.Filled, enabled = ui.canConnect,
+                icon = if (ui.useWifi) R.drawable.ic_wifi else R.drawable.ic_usb,
             )
             if (ui.useWifi) {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
@@ -178,10 +181,38 @@ private fun SegButton(text: String, selected: Boolean, enabled: Boolean, first: 
 }
 
 @Composable
-private fun HeroCircle(icon: Int) {
+private fun HeroCircle(icon: Int, badge: Int? = null) {
     val c = MaterialTheme.colorScheme
-    Box(Modifier.size(104.dp).clip(CircleShape).background(c.primaryContainer).padding(26.dp)) {
-        Icon(painterResource(icon), null, Modifier.fillMaxSize(), tint = c.onPrimaryContainer)
+    Box(Modifier.size(104.dp)) {
+        Box(Modifier.fillMaxSize().clip(CircleShape).background(c.primaryContainer).padding(26.dp)) {
+            Icon(painterResource(icon), null, Modifier.fillMaxSize(), tint = c.onPrimaryContainer)
+        }
+        if (badge != null) {
+            // small round badge on the lower right edge, ringed with the card colour
+            Box(
+                Modifier.align(Alignment.BottomEnd).size(34.dp).clip(CircleShape).background(c.surfaceContainer).padding(3.dp)
+                    .clip(CircleShape).background(c.tertiary).padding(6.dp),
+            ) {
+                Icon(painterResource(badge), null, Modifier.fillMaxSize(), tint = c.onTertiary)
+            }
+        }
+    }
+}
+
+/** Status chip of the camera card: tonal (pairing) or outlined (Wi-Fi link). */
+@Composable
+private fun StatusChip(icon: Int, text: String, filled: Boolean) {
+    val c = MaterialTheme.colorScheme
+    val shape = RoundedCornerShape(8.dp)
+    val content = if (filled) c.onSecondaryContainer else c.onSurfaceVariant
+    Row(
+        Modifier.height(32.dp).clip(shape)
+            .then(if (filled) Modifier.background(c.secondaryContainer) else Modifier.border(1.dp, c.outlineVariant, shape))
+            .padding(start = 8.dp, end = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(icon), null, Modifier.size(18.dp), tint = content)
+        Text(text, Modifier.padding(start = 6.dp), color = content, style = type(14, 20, medium = true), maxLines = 1)
     }
 }
 
@@ -193,21 +224,20 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
             .padding(start = 24.dp, top = 28.dp, end = 24.dp, bottom = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        HeroCircle(R.drawable.ic_camera)
+        HeroCircle(R.drawable.ic_camera, badge = if (ui.paired) R.drawable.ic_bluetooth else null)
         Text(
             "Camera", Modifier.padding(top = 16.dp), color = c.onSurfaceVariant,
             style = type(12, 16, medium = true).copy(letterSpacing = 0.04.em),
         )
         Text(ui.cameraName, color = c.onSurface, textAlign = TextAlign.Center, style = TextStyle(fontSize = 32.sp, lineHeight = 40.sp))
-        Row(
-            Modifier.padding(top = 16.dp).height(32.dp).clip(RoundedCornerShape(8.dp)).background(c.secondaryContainer)
-                .padding(start = 8.dp, end = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(painterResource(R.drawable.ic_bluetooth), null, Modifier.size(18.dp), tint = c.onSecondaryContainer)
-            Text(ui.pairTag, Modifier.padding(start = 6.dp), color = c.onSecondaryContainer, style = type(14, 20, medium = true))
+        // pairing (tonal) and Wi-Fi link (outlined), side by side as in the design
+        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StatusChip(R.drawable.ic_bluetooth, ui.pairTag, filled = true)
+            if (ui.wifiTag.isNotEmpty()) StatusChip(R.drawable.ic_wifi, ui.wifiTag, filled = false)
         }
-        Text(ui.hint, Modifier.padding(top = 12.dp), color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(14, 20))
+        if (ui.hint.isNotEmpty()) {
+            Text(ui.hint, Modifier.padding(top = 12.dp), color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(14, 20))
+        }
     }
 
     Text(
@@ -369,10 +399,74 @@ private fun StepRow(k: Int, step: Int, title: String, sub: String) {
 
 // ------------------------------------------------------------------ error
 
-data class ErrorUi(val message: String = "", val log: String = "")
+/**
+ * What the error screen shows. Title and tips come from [errorUiFor], which only reads the message the connection
+ * actually failed with: it names what went wrong, never a guessed cause.
+ */
+data class ErrorUi(
+    val title: String = "Connessione non riuscita",
+    val message: String = "",
+    val icon: Int = R.drawable.ic_wifi_off,
+    val tips: List<Pair<Int, String>> = emptyList(),
+    val log: String = "",
+)
+
+private val TIP_NEAR = R.drawable.ic_bluetooth to "Tieni il telefono vicino alla camera, accesa"
+private val TIP_USB = R.drawable.ic_usb to "Se il cavo USB è collegato alla camera, scollegalo"
+private val TIP_APPS = R.drawable.ic_tip_close_apps to "Chiudi le altre app che usano la camera, come XApp"
+
+/** Builds the error screen from the failure message ([status], as the service wrote it) and the last log lines. */
+fun errorUiFor(status: String, log: String): ErrorUi {
+    val msg = status.removePrefix("Connessione non riuscita:").trim()
+        .replaceFirstChar { it.uppercase() }
+        .let { if (it.isEmpty() || it.endsWith(".") || it.endsWith(")")) it else "$it." }
+    val m = msg.lowercase()
+    return when {
+        "non ha acceso il wi-fi" in m || "avvio del wi-fi" in m || "nome della rete" in m -> ErrorUi(
+            "La camera non ha acceso il Wi-Fi", msg, R.drawable.ic_wifi_off, listOf(TIP_USB, TIP_APPS, TIP_NEAR), log,
+        )
+        "non risulta abbinata" in m || "abbinamento" in m || "non sembra una fotocamera" in m || "identificazione" in m -> ErrorUi(
+            "Abbinamento non riconosciuto", msg, R.drawable.ic_bluetooth,
+            listOf(
+                R.drawable.ic_camera to "Sulla camera: Bluetooth › Registrazione abbinamento, poi «Abbina nuova camera»",
+                TIP_NEAR,
+            ),
+            log,
+        )
+        "dispositivi nelle vicinanze" in m || "permesso" in m || "geolocalizzazione" in m -> ErrorUi(
+            "Manca un permesso", msg, R.drawable.ic_lock,
+            listOf(R.drawable.ic_phone to "Impostazioni › App › Fuji Transfer › Autorizzazioni"), log,
+        )
+        "bluetooth" in m -> ErrorUi(
+            "Camera non raggiunta via Bluetooth", msg, R.drawable.ic_bluetooth,
+            listOf(TIP_NEAR, R.drawable.ic_phone to "Controlla che il Bluetooth del telefono sia acceso", TIP_APPS), log,
+        )
+        "usb" in m || "bulk" in m -> ErrorUi(
+            "Camera USB non raggiungibile", msg, R.drawable.ic_usb,
+            listOf(
+                R.drawable.ic_usb to "Scollega e ricollega il cavo, con la camera accesa",
+                R.drawable.ic_phone to "Se Android chiede l'accesso alla camera USB, consentilo",
+            ),
+            log,
+        )
+        "rete" in m -> ErrorUi(
+            "Rete della camera non raggiunta", msg, R.drawable.ic_wifi_off,
+            listOf(
+                R.drawable.ic_wifi to "Se Android chiede di collegarsi alla rete della camera, tocca Connetti",
+                TIP_NEAR, TIP_APPS,
+            ),
+            log,
+        )
+        "sessione" in m || "closed the connection" in m || "cannot connect" in m || "accesso alle foto" in m ||
+            "init reply" in m -> ErrorUi(
+            "La camera non ha aperto la sessione", msg, R.drawable.ic_camera, listOf(TIP_APPS, TIP_NEAR), log,
+        )
+        else -> ErrorUi("Connessione non riuscita", msg, R.drawable.ic_wifi_off, listOf(TIP_NEAR, TIP_USB, TIP_APPS), log)
+    }
+}
 
 @Composable
-fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onShare: () -> Unit, onRetry: () -> Unit, onRepair: () -> Unit) {
+fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onCopy: () -> Unit, onRetry: () -> Unit, onRepair: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -387,54 +481,58 @@ fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onShare: () -> Unit, onRetry: (
 
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, top = 16.dp, end = 16.dp),
+                .padding(start = 16.dp, top = 8.dp, end = 16.dp),
         ) {
-            Box(
-                Modifier.align(Alignment.CenterHorizontally).size(88.dp).clip(CircleShape).background(c.errorContainer).padding(22.dp),
-            ) {
-                Icon(painterResource(R.drawable.ic_wifi_off), null, Modifier.fillMaxSize(), tint = c.onErrorContainer)
-            }
-            Text(
-                "Connessione non riuscita", Modifier.padding(top = 16.dp).fillMaxWidth(),
-                color = c.onSurface, textAlign = TextAlign.Center, style = type(24, 30),
-            )
-            Text(
-                ui.message, Modifier.padding(top = 8.dp).fillMaxWidth(),
-                color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(16, 24),
-            )
-
-            Column(
-                Modifier.padding(top = 20.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.surfaceContainer)
-                    .padding(vertical = 8.dp),
-            ) {
+            // icon and title side by side, the message below
+            Row(Modifier.padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(72.dp).clip(CircleShape).background(c.errorContainer).padding(18.dp)) {
+                    Icon(painterResource(ui.icon), null, Modifier.fillMaxSize(), tint = c.onErrorContainer)
+                }
                 Text(
-                    "Cosa puoi provare", Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
-                    color = c.primary, style = type(14, 20, medium = true),
+                    ui.title, Modifier.padding(start = 20.dp).weight(1f),
+                    color = c.onSurface, style = type(24, 32, medium = true),
                 )
-                Tip(R.drawable.ic_bluetooth, "Tieni il telefono vicino alla camera, accesa")
-                Tip(R.drawable.ic_usb, "Scollega il cavo USB dalla camera")
-                Tip(R.drawable.ic_tip_close_apps, "Chiudi le altre app che usano la camera, come XApp")
+            }
+            if (ui.message.isNotEmpty() && ui.message != ui.title + ".") {
+                Text(
+                    ui.message, Modifier.padding(start = 4.dp, top = 16.dp, end = 4.dp),
+                    color = c.onSurface, style = type(16, 24),
+                )
+            }
+
+            if (ui.tips.isNotEmpty()) {
+                Column(
+                    Modifier.padding(top = 20.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
+                        .padding(vertical = 12.dp),
+                ) {
+                    Text(
+                        "Cosa puoi provare", Modifier.padding(start = 20.dp, top = 4.dp, bottom = 4.dp),
+                        color = c.primary, style = type(14, 20, medium = true),
+                    )
+                    ui.tips.forEach { (icon, text) -> Tip(icon, text) }
+                }
             }
 
             Column(
-                Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.surfaceContainerHighest)
-                    .padding(start = 16.dp, top = 6.dp, end = 8.dp, bottom = 14.dp),
+                Modifier.padding(top = 16.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
+                    .background(c.surfaceContainerHighest)
+                    .padding(start = 20.dp, top = 8.dp, end = 8.dp, bottom = 18.dp),
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Registro tecnico", Modifier.weight(1f), color = c.onSurface, style = type(14, 20, medium = true))
-                    FujiButton("Condividi", onShare, kind = ButtonKind.Text, height = 40.dp, icon = R.drawable.ic_share)
+                    FujiButton("Copia", onCopy, kind = ButtonKind.Tonal, height = 40.dp, icon = R.drawable.ic_copy)
                 }
                 SelectionContainer {
                     Text(
-                        ui.log, Modifier.padding(end = 8.dp), color = c.onSurfaceVariant,
-                        style = TextStyle(fontSize = 11.sp, lineHeight = 15.sp, fontFamily = FontFamily.Monospace),
+                        ui.log, Modifier.padding(top = 8.dp, end = 12.dp), color = c.onSurfaceVariant,
+                        style = TextStyle(fontSize = 12.sp, lineHeight = 18.sp, fontFamily = FontFamily.Monospace),
                     )
                 }
             }
         }
 
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            FujiButton("Riprova", onRetry, Modifier.fillMaxWidth(), kind = ButtonKind.Filled)
+            FujiButton("Riprova", onRetry, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, icon = R.drawable.ic_retry)
             FujiButton("Abbina nuova camera", onRepair, Modifier.padding(top = 8.dp).fillMaxWidth(), kind = ButtonKind.Text)
         }
     }
@@ -443,8 +541,10 @@ fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onShare: () -> Unit, onRetry: (
 @Composable
 private fun Tip(icon: Int, text: String) {
     val c = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(painterResource(icon), null, tint = c.onSurfaceVariant)
+    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(40.dp).clip(CircleShape).background(c.secondaryContainer).padding(9.dp)) {
+            Icon(painterResource(icon), null, Modifier.fillMaxSize(), tint = c.onSecondaryContainer)
+        }
         Text(text, Modifier.padding(start = 16.dp), color = c.onSurface, style = type(14, 20))
     }
 }
