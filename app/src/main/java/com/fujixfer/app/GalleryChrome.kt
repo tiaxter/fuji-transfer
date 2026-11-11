@@ -9,6 +9,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -30,17 +33,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -88,10 +87,6 @@ data class GalleryLink(val title: String, val sub: String, val startedAt: Long, 
 class GalleryTopActions(
     val onBack: () -> Unit,
     val onSelectAll: () -> Unit,
-    val onShareLog: () -> Unit,
-    val onLog: () -> Unit,
-    val onImmich: () -> Unit,
-    val onDisconnect: () -> Unit,
     val onBanner: () -> Unit,
     val onDate: () -> Unit,
     val onClearDate: () -> Unit,
@@ -106,11 +101,11 @@ class GalleryTopActions(
 @Composable
 fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
     val c = MaterialTheme.colorScheme
-    var menu by remember { mutableStateOf(false) }
     val selectAllText = stringResource(if (ui.allSelected) R.string.deselect_all else R.string.select_all)
     Column(Modifier.fillMaxWidth()) {
-        // top bar: leave the camera, name and connection, select all, more
-        Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        // top bar: leave the camera, name and connection, select all (no overflow menu: the log is in
+        // Settings, Immich in the selection bar, leaving the camera is the arrow)
+        Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = a.onBack) {
                 Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.disconnect), tint = c.onSurface)
             }
@@ -135,17 +130,6 @@ fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
                     painterResource(R.drawable.ic_select_all), null, Modifier.size(24.dp),
                     tint = if (ui.allSelected) c.onSecondaryContainer else c.onSurface,
                 )
-            }
-            Box {
-                IconButton(onClick = { menu = true }) {
-                    Icon(painterResource(R.drawable.ic_more), contentDescription = stringResource(R.string.more_options), tint = c.onSurfaceVariant)
-                }
-                DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text(stringResource(R.string.send_to_immich)) }, onClick = { menu = false; a.onImmich() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.share_log)) }, onClick = { menu = false; a.onShareLog() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.cd_log)) }, onClick = { menu = false; a.onLog() })
-                    DropdownMenuItem(text = { Text(stringResource(R.string.disconnect)) }, onClick = { menu = false; a.onDisconnect() })
-                }
             }
         }
 
@@ -233,7 +217,7 @@ private fun LinkCard(link: GalleryLink, onAction: () -> Unit) {
 }
 
 /**
- * Filter chip (8 dp corners): outlined, or tonal when on. [leading] is the icon before the text, [trailing] the one
+ * Filter chip: outlined with 10 dp corners, or a tonal pill when on. [leading] is the icon before the text, [trailing] the one
  * after it; with [onTrailing] the trailing icon is its own button (the x of a set filter), the rest of the chip
  * still opens the filter.
  */
@@ -243,11 +227,17 @@ internal fun FilterChip(
     onTrailing: (() -> Unit)? = null, trailingDescription: String? = null,
 ) {
     val c = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(8.dp)
+    // guideline: chips not on have 10 dp corners, chips on are pills; the corners move with a light bounce
+    val radius by animateDpAsState(
+        if (selected) 16.dp else 10.dp,
+        if (android.animation.ValueAnimator.areAnimatorsEnabled()) spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMediumLow) else snap(),
+        label = "chip",
+    )
+    val shape = RoundedCornerShape(radius)
     val content = if (selected) c.onSecondaryContainer else c.onSurfaceVariant
     Row(
         Modifier.height(32.dp).animateContentSize().clip(shape)
-            .then(if (selected) Modifier.background(c.secondaryContainer) else Modifier.border(1.dp, c.outlineVariant, shape))
+            .then(if (selected) Modifier.background(c.secondaryContainer) else Modifier.border(1.5.dp, c.outlineVariant, shape))
             .clickable(role = Role.Button, onClick = onClick)
             .padding(start = if (leading != null && selected && trailing == null) 8.dp else 16.dp, end = if (onTrailing != null) 0.dp else 16.dp),
         verticalAlignment = Alignment.CenterVertically,

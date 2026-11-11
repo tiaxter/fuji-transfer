@@ -28,6 +28,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.ui.platform.LocalConfiguration
+import android.content.res.Configuration
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -106,6 +109,8 @@ class ViewerState {
     /** The video's controls are up: the strip makes room for its seek bar. */
     var controllerShown by mutableStateOf(false)
     var top by mutableStateOf(ViewerTopUi())
+    /** The fixed panel at the bottom (name, format, facts, Seleziona | Scarica ora); null = none yet. */
+    var panel by mutableStateOf<DetailsUi?>(null)
     var load by mutableStateOf(ViewerLoadUi())
     /** Changes when thumbnails arrive (the strip reads them from Thumbs when it draws). */
     var stripTick by mutableIntStateOf(0)
@@ -120,6 +125,8 @@ class ViewerActions(
     val onHd: () -> Unit,
     val onSelect: () -> Unit,
     val onInfo: () -> Unit,
+    /** "Scarica ora" in the panel: the file on screen to the phone. */
+    val onDownload: () -> Unit = {},
     val onPlay: () -> Unit,
     /** A single tap on the picture: show or hide the bars. */
     val onTap: () -> Unit,
@@ -507,33 +514,40 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
             }
         }
 
-        // bottom: what is on its way, then the strip of thumbnails
-        if (bottomAlpha > 0f) {
-            Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 12.dp)
-                    .graphicsLayer { alpha = bottomAlpha * (1f - (progress * 3f).coerceAtMost(1f)) },
-            ) {
-                if (s.loadingVisible) {
-                    if (s.load.videoWhat.isNotEmpty()) {
-                        Box(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
-                            VideoErrorPanel(
-                                s.load.videoWhat, s.load.videoWhy, a.onVideoRetry,
-                                if (s.load.videoCanDownload) a.onVideoDownload else null,
-                            )
-                        }
-                    } else {
-                        Box(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) { ViewerLoading(s.load) }
-                    }
-                }
-                ViewerStrip(s.items, s.index, s.stripTick, a.onJump)
-            }
-        }
         // top bar
         if (chromeAlpha > 0f) {
             Box(Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = barsAlpha }) {
-                ViewerBar(s.top, a.onBack, a.onHd, a.onSelect, a.onInfo)
+                ViewerBar(s.top, a.onBack, a.onHd, a.onInfo)
             }
         }
+      }
+      // bottom: what is on its way, the strip of thumbnails and the fixed panel (portrait only: in landscape the
+      // panel would cover the picture). Outside the system-bar padding so the panel reaches the bottom edge.
+      if (bottomAlpha > 0f) {
+          val panel = s.panel
+          val portrait = LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE
+          Column(
+              Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                  .then(if (panel != null && portrait) Modifier else Modifier.navigationBarsPadding().padding(bottom = 12.dp))
+                  .graphicsLayer { alpha = bottomAlpha * (1f - (progress * 3f).coerceAtMost(1f)) * ((t.value - 0.5f) * 2f).coerceIn(0f, 1f) },
+          ) {
+              if (s.loadingVisible) {
+                  if (s.load.videoWhat.isNotEmpty()) {
+                      Box(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
+                          VideoErrorPanel(
+                              s.load.videoWhat, s.load.videoWhy, a.onVideoRetry,
+                              if (s.load.videoCanDownload) a.onVideoDownload else null,
+                          )
+                      }
+                  } else {
+                      Box(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) { ViewerLoading(s.load) }
+                  }
+              }
+              ViewerStrip(s.items, s.index, s.stripTick, a.onJump)
+              if (panel != null && portrait) {
+                  Box(Modifier.padding(top = 12.dp)) { ViewerPanel(panel, a.onInfo, a.onSelect, a.onDownload) }
+              }
+          }
       }
     }
 }
@@ -612,8 +626,8 @@ fun ViewerStrip(items: List<ObjectInfo>, current: Int, tick: Int, onPick: (Int) 
         LazyRow(
             Modifier.fillMaxSize(),
             state = state,
-            contentPadding = PaddingValues(horizontal = (maxWidth - 48.dp) / 2),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(horizontal = (maxWidth - 52.dp) / 2),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items(items.size) { i -> StripCell(items[i], i == current, tick) { onPick(i) } }
@@ -623,19 +637,19 @@ fun ViewerStrip(items: List<ObjectInfo>, current: Int, tick: Int, onPick: (Int) 
 
 @Composable
 private fun StripCell(info: ObjectInfo, open: Boolean, tick: Int, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(8.dp)
+    val shape = RoundedCornerShape(14.dp)
     val bmp = Thumbs.get(info)
     // a thumbnail missing now is drawn on the next refresh, when it arrives
     LaunchedEffect(info, tick) { if (Thumbs.get(info) == null) Thumbs.request(info) }
     Box(
-        Modifier.size(48.dp).drawWithContent {
+        Modifier.size(52.dp).drawWithContent {
             drawContent()
             if (open) {
                 // the open file's ring, just outside the cell
-                val o = 2.dp.toPx()
+                val o = 1.5.dp.toPx()
                 drawRoundRect(
                     Color.White, Offset(-o, -o), Size(size.width + 2 * o, size.height + 2 * o),
-                    CornerRadius(8.dp.toPx() + o), style = Stroke(2.dp.toPx()),
+                    CornerRadius(14.dp.toPx() + o), style = Stroke(3.dp.toPx()),
                 )
             }
         }.clip(shape).background(Color(0x33FFFFFF)).clickable(onClick = onClick),
@@ -643,7 +657,7 @@ private fun StripCell(info: ObjectInfo, open: Boolean, tick: Int, onClick: () ->
         if (bmp != null) {
             val img = remember(bmp) { bmp.asImageBitmap() }
             Image(
-                img, contentDescription = null, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (open) 1f else 0.78f },
+                img, contentDescription = null, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = if (open) 1f else 0.8f },
                 contentScale = ContentScale.Crop,
             )
         }

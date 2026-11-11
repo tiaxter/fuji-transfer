@@ -334,7 +334,7 @@
         <item quantity="other">Download only the first %1$d files · %2$s</item>
     </plurals>
     <string name="low_free">Free up space</string>
-    <string name="low_note">“Free up space” opens Android\'s storage: then come back here and try again.</string>
+    <string name="low_note">“Free up space” opens Android\'s storage: then come back here and carry on.</string>
     <string name="low_title">Not enough space on the phone</string>
     <string name="manual_close">Close manual</string>
     <string name="manual_connect">Connect without Bluetooth</string>
@@ -680,4 +680,7 @@
     <string name="folder_base">Main folder</string>
     <string name="folder_name">Subfolder</string>
     <string name="folder_note">Files already downloaded stay where they are. Android only accepts each type of file in some main folders: if it refuses a file anyway, the file goes to the default folder for its type.</string>
+    <string name="viewer_on_phone">Already on the phone</string>
+    <string name="viewer_not_on_phone">Not on the phone yet</string>
+    <string name="selected_one">Selected</string>
 </resources>

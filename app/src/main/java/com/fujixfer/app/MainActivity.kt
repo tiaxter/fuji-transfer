@@ -654,10 +654,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 refreshVisibleRows(animate = true)
                 updateBottom()
             },
-            onShareLog = { shareLog() },
-            onLog = { showLog() },
-            onImmich = { showImmich() },
-            onDisconnect = { sendAction(TransferService.ACTION_DISCONNECT) },
             onBanner = { showLog() },
             onDate = { openDate() },
             onClearDate = { clearDate() },
@@ -1638,6 +1634,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             megapixels = if (info.width > 0 && info.height > 0) "${(info.width * info.height + 500_000) / 1_000_000} MP" else "",
             immich = immichMark(info),
             canUpload = TransferState.connected || key(info) in done,
+            kind = info.filename.substringAfterLast('.', "").uppercase(Locale.ROOT),
+            film = if (film != null) Films.label(this, film) else "",
+            filmIcon = if (film != null) Films.icon(film) ?: R.drawable.ic_film else null,
+            place = placeNames[MetaStore.key(info.filename, info.captureDate)].orEmpty(),
+            onPhone = key(info) in done,
         )
     }
 
@@ -1732,6 +1733,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     paintSelect()
                 },
                 onInfo = { showDetailsSheet(info) },
+                onDownload = {
+                    downloadsHidden = false
+                    startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, longArrayOf(info.handle)) }
+                },
                 onPlay = {
                     ui.playVisible = false
                     fetchOriginal()
@@ -1851,6 +1856,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         fun paintSelect() {
             val on = info.handle in selected
             topUi = topUi.copy(selected = on)
+            ui.panel = detailsUi(info) // the panel at the bottom: name, format, facts, Seleziona | Scarica ora
         }
 
         private fun showItem(start: android.graphics.Bitmap?) {
@@ -1952,6 +1958,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         fun update() {
             val st = TransferState
             val i = info
+            detailsUi(i).let { if (it != ui.panel) ui.panel = it } // downloaded, connected, queued for Immich...
             if (level < 2 && !waitingOriginal && !decoding && Previews.applies(i)) {
                 val f = Previews.get(i)
                 if (f != null) {

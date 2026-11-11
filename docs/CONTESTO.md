@@ -76,7 +76,7 @@ Dal canvas "Fuji Transfer · Expressive", riga "Revisione UX: schermate riviste"
 - Download: «7 di 12» con il totale più piccolo, riga «Poi su Immich…» se il modo è «Sempre», avviso della caduta
   chiudibile, «Annulla» delineato e «Continua in background» pieno.
 - Immich: scheda del server («Connesso», chi e dove) con «N foto in attesa», ultimo invio e «Invia ora».
-- Non fatto: il visore con il pannello fisso in basso (`Rev-Visore`): resta il foglio dettagli che si apre da (i).
+- Visore con il pannello fisso in basso (`Rev-Visore`): fatto l'11 nov sera, vedi sotto.
 - Non compilato con Gradle (nel container Google Maven è bloccato): le schermate Compose cambiate sono state
   controllate con kotlinc 2.2.10 contro Compose Desktop 1.8.2; `MainActivity` solo riletta.
 
@@ -109,3 +109,19 @@ Dal canvas "Fuji Transfer · Expressive", riga "Schermate che mancavano" e varia
   toccandola si apre l'app, che mostra la scheda giusta.
 - Controllo: kotlinc 2.2.10 contro Compose Desktop 1.8.2 sui file Compose; `MainActivity`, `MapScreen` e
   `TransferService` solo riletti. Non compilato con Gradle.
+
+## Controllo completo contro il design (11 nov 2026, notte)
+Confronto di tutte le 55 schermate del canvas "Fuji Transfer · Expressive" con il codice (testi estratti dagli
+artboard e cercati in `values-it/strings.xml`; le differenze rimaste sono dati di esempio o frasi già rese più precise).
+- Galleria: tolto il menu a tendina in alto a destra (⋮). Il registro è in Impostazioni, Immich nella barra di
+  selezione, scollegarsi è la freccia indietro.
+- Chip dei filtri (galleria, mappa, registro, scorciatoie della data) come da «Linguaggio Expressive»: angoli 10 dp
+  e bordo 1,5 dp quando spenti, pillola tonale quando accesi, con un leggero rimbalzo. Le scorciatoie del filtro Data
+  usano ora lo stesso `FilterChip`.
+- Visore (`Rev-Visore`): barra con nome e data e pulsante tondo «Dettagli»; striscia con miniature da 52 dp, angoli
+  14 e anello bianco da 3 dp; pannello fisso in basso (`ViewerPanel`, solo in verticale): nome, «Dettagli ›» (il foglio
+  completo, che si apre anche trascinando in su), chip formato e pellicola, dimensione · risoluzione · luogo (se c'è un
+  filtro luogo), «Già sul telefono» / «Non ancora sul telefono», coppia Seleziona | Scarica ora. La selezione non è più
+  nella barra in alto. Il pannello si aggiorna in `Viewer.update()`.
+- La scheda Backup/Immich in Connetti resta: c'è nell'artboard «Connetti · Immich con etichetta».
+- Compilato con Gradle (`:app:compileDebugKotlin`) con SDK Android scaricato nel container.

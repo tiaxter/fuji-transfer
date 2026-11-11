@@ -6,7 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,25 +59,28 @@ data class ViewerTopUi(
     val selected: Boolean = false,
 )
 
+/**
+ * The viewer's top bar (design "Rev · Visore"): back, the file name with its date, "Originale" over a quick preview
+ * and the round tonal "Dettagli" button. Selecting the file is in the panel at the bottom.
+ */
 @Composable
-fun ViewerBar(ui: ViewerTopUi, onBack: () -> Unit, onHd: () -> Unit, onSelect: () -> Unit, onInfo: () -> Unit) {
-    val c = MaterialTheme.colorScheme
+fun ViewerBar(ui: ViewerTopUi, onBack: () -> Unit, onHd: () -> Unit, onInfo: () -> Unit) {
     val originalCd = stringResource(R.string.cd_original)
-    val selectCd = stringResource(if (ui.selected) R.string.cd_selected_tap else R.string.cd_select_download)
+    val detailsCd = stringResource(R.string.details)
     Row(
-        Modifier.fillMaxWidth().height(64.dp).background(Color(0x73000000)).padding(horizontal = 4.dp),
+        Modifier.fillMaxWidth().height(72.dp).background(Color(0x73000000)).padding(start = 4.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
             Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back), tint = Color.White)
         }
         Column(Modifier.weight(1f).padding(start = 4.dp)) {
-            Text(ui.name, color = Color.White, style = type(16, 24, medium = true), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(ui.note, color = Color(0xC7FFFFFF), style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(ui.name, color = Color.White, style = type(18, 24, medium = true), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(ui.note, color = Color(0xFFC9CDC9), style = type(14, 20), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         if (ui.hd) {
             Box(
-                Modifier.padding(end = 4.dp).height(40.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x33FFFFFF))
+                Modifier.padding(end = 8.dp).height(40.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x33FFFFFF))
                     .clickable(role = Role.Button, onClick = onHd).padding(horizontal = 14.dp)
                     .semantics { contentDescription = originalCd },
                 contentAlignment = Alignment.Center,
@@ -83,24 +88,83 @@ fun ViewerBar(ui: ViewerTopUi, onBack: () -> Unit, onHd: () -> Unit, onSelect: (
                 Text(stringResource(R.string.original), color = Color.White, style = type(14, 20, medium = true), maxLines = 1)
             }
         }
-        // select this file for the download, as in the gallery: ring = not chosen, green check = chosen
         Box(
-            Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onSelect)
-                .semantics { contentDescription = selectCd },
+            Modifier.size(48.dp).clip(CircleShape).background(Color(0xFF2B2E2C))
+                .clickable(role = Role.Button, onClick = onInfo).semantics { contentDescription = detailsCd },
             contentAlignment = Alignment.Center,
         ) {
-            if (ui.selected) {
-                Icon(
-                    painterResource(R.drawable.ic_check), contentDescription = null,
-                    modifier = Modifier.size(24.dp).background(c.primary, CircleShape).border(2.dp, c.background, CircleShape).padding(3.dp),
-                    tint = c.onPrimary,
-                )
-            } else {
-                Box(Modifier.size(24.dp).background(Color(0x2E000000), CircleShape).border(2.dp, Color.White, CircleShape))
+            Icon(painterResource(R.drawable.ic_info), null, Modifier.size(24.dp), tint = Color.White)
+        }
+    }
+}
+
+/**
+ * The fixed panel under the viewer's strip (design "Rev · Visore"): a sheet-like surface with the handle, the name and
+ * "Dettagli ›" (the full sheet), the format and film chips, size · dimensions · place, whether it is on the phone,
+ * and the joined Seleziona | Scarica ora pair. A drag up on the picture still opens the full sheet.
+ */
+@Composable
+fun ViewerPanel(ui: DetailsUi, onDetails: () -> Unit, onSelect: () -> Unit, onDownload: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(c.surfaceContainerLow)
+            .navigationBarsPadding().padding(start = 20.dp, top = 10.dp, end = 20.dp, bottom = 20.dp),
+    ) {
+        Box(
+            Modifier.align(Alignment.CenterHorizontally).size(width = 36.dp, height = 4.dp)
+                .clip(RoundedCornerShape(2.dp)).background(c.outline),
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(ui.title, Modifier.weight(1f), color = c.onSurface, style = type(24, 32, medium = true), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(
+                Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).clickable(role = Role.Button, onClick = onDetails)
+                    .padding(start = 12.dp, end = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.details), color = c.primary, style = type(14, 20, medium = true))
+                Icon(painterResource(R.drawable.ic_chevron_right), null, Modifier.padding(start = 2.dp).size(18.dp), tint = c.primary)
             }
         }
-        IconButton(onClick = onInfo) {
-            Icon(painterResource(R.drawable.ic_info), contentDescription = stringResource(R.string.details), tint = Color.White)
+        Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (ui.kind.isNotEmpty()) {
+                Box(
+                    Modifier.height(32.dp).clip(RoundedCornerShape(8.dp)).background(c.primaryContainer).padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(ui.kind, color = c.onPrimaryContainer, style = type(14, 20, medium = true), maxLines = 1)
+                }
+            }
+            if (ui.film.isNotEmpty()) {
+                val tag = RoundedCornerShape(8.dp)
+                Row(
+                    Modifier.height(32.dp).clip(tag).border(1.dp, c.outline, tag).padding(horizontal = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ui.filmIcon?.let { Icon(painterResource(it), null, Modifier.padding(end = 6.dp).size(18.dp), tint = c.onSurface) }
+                    Text(ui.film, color = c.onSurface, style = type(14, 20, medium = true), maxLines = 1)
+                }
+            }
+        }
+        val facts = listOf(ui.size, ui.dims, ui.place).filter { it.isNotEmpty() && it != "—" }.joinToString(" · ")
+        if (facts.isNotEmpty()) {
+            Text(facts, Modifier.padding(top = 10.dp), color = c.onSurfaceVariant, style = type(14, 20), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(
+            stringResource(if (ui.onPhone) R.string.viewer_on_phone else R.string.viewer_not_on_phone),
+            Modifier.padding(top = if (facts.isEmpty()) 10.dp else 0.dp), color = c.onSurfaceVariant, style = type(14, 20),
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
+            GroupButton(
+                stringResource(if (ui.selected) R.string.selected_one else R.string.select), first = true,
+                container = c.secondaryContainer, content = c.onSecondaryContainer, onClick = onSelect, modifier = Modifier.weight(1f),
+                icon = if (ui.selected) R.drawable.ic_check else R.drawable.ic_select_all,
+                description = stringResource(if (ui.selected) R.string.cd_selected_tap else R.string.cd_select_download),
+            )
+            Box(Modifier.size(2.dp))
+            GroupButton(
+                stringResource(R.string.download_now), first = false, container = c.primary, content = c.onPrimary,
+                onClick = onDownload, modifier = Modifier.weight(1f), enabled = ui.canDownload && !ui.onPhone, icon = R.drawable.ic_download,
+            )
         }
     }
 }

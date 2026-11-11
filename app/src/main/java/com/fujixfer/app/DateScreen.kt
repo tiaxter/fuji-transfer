@@ -193,16 +193,10 @@ fun DateScreen(session: DateSession, onApply: (range: Pair<String, String>?, lab
         ) {
             for ((label, range) in presets) {
                 val on = lo == range.first && hi == range.second
-                val shape = RoundedCornerShape(8.dp)
-                Box(
-                    Modifier.height(32.dp).clip(shape)
-                        .then(if (on) Modifier.background(c.secondaryContainer) else Modifier.border(1.dp, c.outlineVariant, shape))
-                        .clickable(role = Role.Button) { set(range.first, if (range.second == range.first) null else range.second) }
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(label, color = if (on) c.onSecondaryContainer else c.onSurfaceVariant, style = type(14, 20, medium = true), maxLines = 1)
-                }
+                // the same chip as the gallery's filters: 10 dp corners, a tonal pill when on
+                FilterChip(label, on, if (on) R.drawable.ic_check else null, null, onClick = {
+                    set(range.first, if (range.second == range.first) null else range.second)
+                })
             }
         }
 

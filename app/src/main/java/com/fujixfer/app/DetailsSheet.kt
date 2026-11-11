@@ -43,6 +43,13 @@ data class DetailsUi(
     val megapixels: String = "",
     val immich: ImmichMark = ImmichMark.None,
     val canUpload: Boolean = false,
+    /** For the viewer's panel: "JPG", the film simulation and its symbol ("" / null = unknown), the place ("" = none). */
+    val kind: String = "",
+    val film: String = "",
+    val filmIcon: Int? = null,
+    val place: String = "",
+    /** The file is already on the phone. */
+    val onPhone: Boolean = false,
 )
 
 /** Where a camera file stands with Immich. */
