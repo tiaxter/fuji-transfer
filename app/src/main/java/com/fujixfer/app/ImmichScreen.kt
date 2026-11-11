@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.em
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -52,11 +54,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * "Backup su Immich" (design "Immich · quando caricare"). Two phases:
+ * "Immich" (design "Impostazioni · Immich"). Two phases:
  * - not signed in: address, Email e password | Chiave API, "Accedi". The password is used once to log in and is
  *   never stored: the app keeps the session token.
- * - signed in: who and where ("Esci"), "Quando caricare" (only when asked / ask at the end of a download /
- *   always), "Cosa caricare" (for the automatic queue), "Carica solo con Wi-Fi", and the way to the uploads list.
+ * - signed in: the server ("Verifica"), address and account ("Cambia" = sign in again), "Quando inviare" (only
+ *   when asked / ask at the end of a download / always), "Cosa inviare" (for the automatic queue), "Invia solo con
+ *   Wi-Fi", the way to the uploads list and "Scollega Immich".
  * Every choice is saved as soon as it is made: there is no "Salva".
  */
 @Composable
@@ -81,14 +84,27 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
     // queue size and access problems, kept fresh while the screen is open
     var queued by remember { mutableIntStateOf(0) }
     var blocked by remember { mutableStateOf("") }
-    var lastSent by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         while (true) {
             queued = ImmichSync.queued(ctx).size + ImmichSync.failed(ctx).size
             blocked = ImmichSync.blocked(ctx)
-            lastSent = ImmichSync.lastSummary(ctx).substringBefore(" — ")
             delay(1000)
         }
+    }
+
+    var verifying by remember { mutableStateOf(false) }
+    var checkedOk by remember { mutableStateOf(false) }
+    var verifyError by remember { mutableStateOf("") }
+
+    fun signOut() {
+        ImmichSync.signOut(ctx)
+        saved = ImmichSync.settings(ctx)
+        url = saved.url
+        email = saved.email
+        key = ""
+        serverInfo = ""
+        checkedOk = false
+        linked = false
     }
 
     fun update(s: ImmichSync.Settings) {
@@ -127,7 +143,7 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
             IconButton(onClick = onBack) {
                 Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = c.onSurface)
             }
-            Text("Backup su Immich", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text("Immich", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
         }
 
         Column(
@@ -175,29 +191,56 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     Text(error, Modifier.padding(horizontal = 4.dp), color = c.error, style = type(14, 20))
                 }
             } else {
-                LinkedCard(
-                    who = if (saved.useLogin) saved.email else "Chiave API",
-                    where = hostOf(saved.url) + (if (serverInfo.isNotEmpty()) " · " + serverInfo.substringBefore(" · ") else ""),
+                val host = hostOf(saved.url)
+                val version = serverInfo.substringBefore(" · ")
+                StatusCard(
                     problem = blocked,
-                    queued = queued,
-                    waitingFor = if (saved.wifiOnly) "Partono col Wi‑Fi, anche ad app chiusa" else "Partono appena c'è la rete",
-                    last = lastSent,
-                    onSendNow = {
-                        ImmichSync.uploadNowAnyNetwork(ctx)
-                        onUploads()
+                    line = when {
+                        checkedOk -> "$host · risponde"
+                        saved.useLogin -> saved.email
+                        else -> "Chiave API"
                     },
-                    onSignOut = {
-                        ImmichSync.signOut(ctx)
-                        saved = ImmichSync.settings(ctx)
-                        key = ""
-                        serverInfo = ""
-                        linked = false
+                    sub = if (checkedOk) "Verificato ora" + (if (version.isNotEmpty()) " · $version" else "")
+                    else host + (if (version.isNotEmpty()) " · $version" else ""),
+                    checking = verifying,
+                    onVerify = {
+                        verifying = true
+                        scope.launch {
+                            val r = withContext(Dispatchers.IO) { runCatching { ImmichSync.verify(saved, "") } }
+                            verifying = false
+                            r.onSuccess { (_, text) ->
+                                ImmichSync.saveServerInfo(ctx, text)
+                                serverInfo = text
+                                checkedOk = true
+                                verifyError = ""
+                            }.onFailure { e ->
+                                checkedOk = false
+                                verifyError = e.message ?: "Server non raggiungibile"
+                            }
+                        }
                     },
                 )
+                if (verifyError.isNotEmpty()) {
+                    Text(verifyError, Modifier.padding(horizontal = 4.dp), color = c.error, style = type(14, 20))
+                }
 
-                SectionTitle("Quando caricare")
+                SectionTitle("Server e account")
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    InfoRow("Indirizzo del server", saved.url, groupShape(0, 2), null, {})
+                    InfoRow(
+                        if (saved.useLogin) saved.email else "Chiave API",
+                        if (saved.useLogin) "Accesso con email e password" else "Accesso con chiave API",
+                        groupShape(1, 2), "Cambia",
+                    ) { signOut() }
+                }
+                Text(
+                    "Per cambiare indirizzo o account tocca Cambia e accedi di nuovo.",
+                    Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(12, 16),
+                )
+
+                SectionTitle("Quando inviare")
                 val modes = listOf(
-                    Triple(ImmichSync.MODE_ASK, "Solo quando lo chiedo", "In galleria scegli le foto e tocchi Carica"),
+                    Triple(ImmichSync.MODE_ASK, "Solo quando lo chiedo", "In galleria scegli le foto e tocchi Immich"),
                     Triple(ImmichSync.MODE_OFFER, "Chiedi a fine download", "Una domanda dopo ogni lotto: sì o no"),
                     Triple(ImmichSync.MODE_AUTO, "Sempre, dopo ogni download", "Le foto appena scaricate vanno in coda"),
                 )
@@ -209,7 +252,7 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     }
                 }
 
-                SectionTitle("Cosa caricare")
+                SectionTitle("Cosa inviare")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         ImmichSync.KIND_PHOTO to "Foto JPG", ImmichSync.KIND_RAW to "RAW (RAF)", ImmichSync.KIND_VIDEO to "Video",
@@ -225,11 +268,14 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(12, 16),
                 )
 
+                SectionTitle("Rete")
                 Column(
-                    Modifier.padding(top = 4.dp, bottom = 16.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
-                        .background(c.surfaceContainer).padding(horizontal = 20.dp, vertical = 4.dp),
+                    Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                        .background(c.surfaceContainer).padding(horizontal = 16.dp, vertical = 2.dp),
                 ) {
-                    ToggleRow("Carica solo con Wi‑Fi", "Mai con i dati mobili", saved.wifiOnly) { update(saved.copy(wifiOnly = it)) }
+                    ToggleRow(
+                        "Invia solo con Wi‑Fi", "Mai con i dati mobili. Se il Wi‑Fi non raggiunge il server, aspetta.", saved.wifiOnly,
+                    ) { update(saved.copy(wifiOnly = it)) }
                 }
             }
         }
@@ -241,13 +287,21 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     kind = ButtonKind.Filled, enabled = !checking,
                 )
                 Text(
-                    "Dopo l'accesso scegli quando caricare. Nulla parte da solo.",
+                    "Dopo l'accesso scegli quando inviare. Nulla parte da solo.",
                     Modifier.padding(top = 8.dp), color = c.onSurfaceVariant, style = type(12, 16),
                 )
             } else {
                 FujiButton(
-                    if (queued > 0) "Vedi caricamenti · $queued in coda" else "Vedi caricamenti", onUploads,
+                    if (queued > 0) "Vedi gli invii · $queued in coda" else "Vedi gli invii", onUploads,
                     Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, height = 56.dp, icon = R.drawable.ic_cloud_queue,
+                )
+                FujiButton(
+                    "Scollega Immich", { signOut() }, Modifier.padding(top = 4.dp).fillMaxWidth(),
+                    kind = ButtonKind.Text, contentColor = c.error,
+                )
+                Text(
+                    "Le foto già su Immich restano lì. Qui si ferma solo l'invio.",
+                    color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(13, 18),
                 )
             }
         }
@@ -266,59 +320,55 @@ private fun SectionTitle(text: String) {
     )
 }
 
-/** Signed in: account, server, "Esci"; [problem] = the server's last refusal (access or address), if any. */
-/**
- * The server: connected (or the sign-in to redo), who and where, "Esci"; under a line, what waits to go up and
- * "Invia ora" (this once also on mobile data).
- */
+/** The server: connected (or the sign-in to redo), with "Verifica" to ask it now. */
 @Composable
-private fun LinkedCard(
-    who: String, where: String, problem: String, queued: Int, waitingFor: String, last: String,
-    onSendNow: () -> Unit, onSignOut: () -> Unit,
-) {
+private fun StatusCard(problem: String, line: String, sub: String, checking: Boolean, onVerify: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val bad = problem.isNotEmpty()
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(if (bad) c.errorContainer else c.surfaceContainer)
-            .padding(start = 16.dp, top = 16.dp, end = 12.dp, bottom = 12.dp),
+    val bg = if (bad) c.errorContainer else c.tertiaryContainer
+    val fg = if (bad) c.onErrorContainer else c.onTertiaryContainer
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(bg).padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier.size(56.dp).clip(CircleShape).background(if (bad) c.error else c.primaryContainer),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(painterResource(R.drawable.ic_immich), null, Modifier.size(30.dp), tint = if (bad) c.onError else c.onPrimaryContainer)
-            }
-            val fg = if (bad) c.onErrorContainer else c.onSurface
-            val soft = if (bad) c.onErrorContainer else c.onSurfaceVariant
-            Column(Modifier.weight(1f).padding(start = 16.dp)) {
-                Text("Server", color = soft, style = type(12, 16).copy(letterSpacing = 0.06.em))
-                Text(if (bad) "Accesso da rifare" else "Connesso", color = fg, style = type(24, 30, medium = true))
-                Text(if (bad) problem else "$who · $where", color = soft, style = type(14, 20), maxLines = 2, overflow = TextOverflow.Ellipsis)
-            }
-            FujiButton("Esci", onSignOut, kind = ButtonKind.Text, height = 40.dp, contentColor = if (bad) c.onErrorContainer else c.primary)
+        Box(
+            Modifier.size(52.dp).clip(CircleShape).background(if (bad) c.error else c.tertiary),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(if (bad) R.drawable.ic_lock else R.drawable.ic_cloud_done), null, Modifier.size(26.dp),
+                tint = if (bad) c.onError else c.onTertiary,
+            )
         }
-        if (!bad) {
-            Box(Modifier.padding(top = 12.dp, bottom = 8.dp).fillMaxWidth().height(1.dp).background(c.outlineVariant))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                    Text(
-                        when (queued) {
-                            0 -> "Nessuna foto in attesa"
-                            1 -> "1 foto in attesa"
-                            else -> "$queued foto in attesa"
-                        },
-                        color = c.onSurface, style = type(16, 22, medium = true),
-                    )
-                    val sub = listOfNotNull(
-                        if (queued > 0) waitingFor else null,
-                        if (last.isNotEmpty()) "ultimo invio $last" else null,
-                    ).joinToString(" · ")
-                    if (sub.isNotEmpty()) Text(sub, color = c.onSurfaceVariant, style = type(13, 18))
-                }
-                if (queued > 0) FujiButton("Invia ora", onSendNow, kind = ButtonKind.Tonal, icon = R.drawable.ic_cloud_upload)
-            }
+        Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
+            Text(if (bad) "Accesso da rifare" else "Collegato", color = fg, style = type(18, 24, medium = true))
+            Text(if (bad) problem else line, color = fg, style = type(14, 20), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (!bad && sub.isNotEmpty()) Text(sub, color = fg.copy(alpha = 0.85f), style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+        Box(
+            Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(if (bad) c.error else c.tertiary)
+                .clickable(enabled = !checking, role = Role.Button, onClick = onVerify).padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(if (checking) "Verifico…" else "Verifica", color = if (bad) c.onError else c.onTertiary, style = type(14, 20, medium = true))
+        }
+    }
+}
+
+/** A row of "Server e account": what, and a small tonal button ([action] null = none). */
+@Composable
+private fun InfoRow(title: String, sub: String, shape: RoundedCornerShape, action: String?, onAction: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(shape).background(c.surfaceContainer)
+            .padding(start = 16.dp, top = 8.dp, end = 12.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f).padding(end = 8.dp)) {
+            Text(title, color = c.onSurface, style = type(16, 22), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sub, color = c.onSurfaceVariant, style = type(13, 18), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        if (action != null) FujiButton(action, onAction, kind = ButtonKind.Tonal, height = 40.dp)
     }
 }
 

@@ -282,9 +282,9 @@ data class GalleryBottomUi(
     val selTitle: String = "Nessuna selezionata",
     val selInfo: String = "",
     val canDownload: Boolean = false,
-    /** "Carica": the selection goes to Immich (downloaded first where needed). */
+    /** "Immich": the selection goes to Immich (downloaded first where needed). */
     val canUpload: Boolean = false,
-    /** After "Carica", with nothing selected: "5 foto in coda per Immich" with Annulla ("" = none). */
+    /** After "Immich", with nothing selected: "5 foto in coda per Immich" with Annulla ("" = none). */
     val snack: String = "",
     /** Second line of [snack]: when the queued files go up. */
     val snackSub: String = "Partono col Wi‑Fi, anche ad app chiusa",
@@ -321,7 +321,7 @@ fun GalleryBottom(
         }
 
         if (ui.snack.isNotEmpty()) {
-            // after "Carica": what happens next, and the way back
+            // after "Immich": what happens next, and the way back
             Row(
                 Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp).heightIn(min = 64.dp)
                     .shadow(3.dp, RoundedCornerShape(20.dp)).background(c.inverseSurface, RoundedCornerShape(20.dp))
@@ -373,15 +373,15 @@ fun GalleryBottom(
                 }
                 Row(Modifier.padding(start = 8.dp)) {
                     ActionTile(
-                        "Carica", R.drawable.ic_cloud_upload, first = true, enabled = ui.canUpload,
+                        "Immich", R.drawable.ic_cloud_upload, first = true, enabled = ui.canUpload,
                         container = c.secondaryContainer, content = c.onSecondaryContainer,
-                        description = "Carica su Immich le foto selezionate", onClick = onUpload,
+                        description = "Invia a Immich le foto selezionate", onClick = onUpload,
                     )
                     Box(Modifier.width(2.dp))
                     ActionTile(
-                        if (ui.later) "Accoda" else "Scarica", if (ui.later) R.drawable.ic_clock else R.drawable.ic_download,
+                        if (ui.later) "Accoda" else "Telefono", if (ui.later) R.drawable.ic_clock else R.drawable.ic_download,
                         first = false, enabled = ui.canDownload, container = c.primary, content = c.onPrimary,
-                        description = if (ui.later) "Scarica appena la camera è collegata" else "Scarica sul telefono le foto selezionate",
+                        description = if (ui.later) "Scarica appena la camera è collegata" else "Salva sul telefono le foto selezionate",
                         onClick = onDownload,
                     )
                 }

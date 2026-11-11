@@ -1171,7 +1171,18 @@ class TransferService : Service() {
                 else -> "Finito: $ok file scaricati"
             }
             setStatus(msg, error = failed > 0)
-            updateNotification(msg, 0, 0, force = true)
+            // the notification says what is left to do, in the app's words
+            val (title, text) = when {
+                cancelRequested -> "Download annullato" to (if (ok == 1) "1 file è sul telefono." else "$ok file sono sul telefono.")
+                droppedByCamera -> "La camera ha spento il Wi‑Fi" to
+                    ((if (ok == 1) "1 file è sul telefono." else "$ok file sono sul telefono.") +
+                        (if (partialName.isNotEmpty()) " $partialName riparte dal $partialPercent%." else "") + " Tocca per riprendere.")
+                failed > 0 -> "Download finito · $ok file" to "$failed con errori: i dettagli sono nel registro."
+                immichOffer(ok) -> "Download finito · $ok file" to "Inviarli anche a Immich?"
+                immichQueued > 0 -> "Download finito · $ok file" to "$immichQueued in coda per Immich."
+                else -> "Download finito · $ok file" to "Foto e video in Fujifilm, RAW in Download/Fujifilm."
+            }
+            updateNotification(text, 0, 0, force = true, title = title)
         }
     }
 
@@ -1200,9 +1211,12 @@ class TransferService : Service() {
                 // the bar follows the whole batch, like the download screen
                 val (doneAll, all) = TransferState.batchEstimate()
                 val p = if (all > 0) (doneAll * 1000 / all).toInt().coerceIn(0, 1000) else 0
+                // "Download 7 di 12" / "DSCF4827.MOV · 62%", as in the design's notifications
+                val filePct = if (total > 0) (done * 100 / total).toInt().coerceIn(0, 100) else 0
                 updateNotification(
-                    "Download ${TransferState.batchIndex} di ${TransferState.batchCount} · ${p / 10}% · ${info?.filename.orEmpty()}",
+                    "${info?.filename.orEmpty()} · $filePct%",
                     p, 1000, force = false,
+                    title = "Download ${TransferState.batchIndex} di ${TransferState.batchCount}",
                 )
             }
         }
@@ -1858,6 +1872,12 @@ class TransferService : Service() {
         wifiLowLatency = null
     }
 
+    /** "Chiedi a fine download": the app asks about Immich when opened after the batch. */
+    private fun immichOffer(ok: Int): Boolean {
+        val im = ImmichSync.settings(this)
+        return ok > 0 && im.configured && im.mode == ImmichSync.MODE_OFFER
+    }
+
     private fun setStatus(s: String, error: Boolean = false) {
         DebugLog.add((if (error) "ERRORE " else "» ") + s)
         TransferState.statusIsError = error
@@ -1870,7 +1890,7 @@ class TransferService : Service() {
         startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
-    private fun buildNotification(text: String, progress: Int, max: Int): Notification {
+    private fun buildNotification(text: String, progress: Int, max: Int, title: String = "Fuji Transfer"): Notification {
         val downloading = TransferState.busy && TransferState.progressName.isNotEmpty()
         val openIntent = Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -1883,8 +1903,9 @@ class TransferService : Service() {
         )
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setContentTitle("Fuji Transfer")
+            .setContentTitle(title)
             .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
             .setContentIntent(open)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -1895,10 +1916,10 @@ class TransferService : Service() {
             .build()
     }
 
-    private fun updateNotification(text: String, progress: Int, max: Int, force: Boolean) {
+    private fun updateNotification(text: String, progress: Int, max: Int, force: Boolean, title: String = "Fuji Transfer") {
         val now = System.currentTimeMillis()
         if (!force && now - lastNotification < 400) return
         lastNotification = now
-        nm.notify(NOTIF_ID, buildNotification(text, progress, max))
+        nm.notify(NOTIF_ID, buildNotification(text, progress, max, title))
     }
 }

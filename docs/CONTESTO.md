@@ -79,3 +79,33 @@ Dal canvas "Fuji Transfer · Expressive", riga "Revisione UX: schermate riviste"
 - Non fatto: il visore con il pannello fisso in basso (`Rev-Visore`): resta il foglio dettagli che si apre da (i).
 - Non compilato con Gradle (nel container Google Maven è bloccato): le schermate Compose cambiate sono state
   controllate con kotlinc 2.2.10 contro Compose Desktop 1.8.2; `MainActivity` solo riletta.
+
+## Schermate che mancavano (11 nov 2026, sera)
+Dal canvas "Fuji Transfer · Expressive", riga "Schermate che mancavano" e varianti nuove nelle righe 3 e 7.
+- Parole: «Carica» diventa «Invia a Immich» (riquadro «Immich» nella barra di selezione, «Telefono» al posto di
+  «Scarica»), «Caricamenti» diventa «Invii a Immich», «Quando inviare», «Cosa inviare», «Inviarli anche a Immich?».
+- Connetti: icona «Impostazioni» accanto a «Registro».
+- Impostazioni (`SetupScreens.kt`, `SettingsScreen`): camera abbinata (Dimentica), Abbina nuova camera, Tieni lo
+  schermo acceso, cartelle di salvataggio (solo informazione: non si cambiano), uso in background, Immich, elenco e
+  miniature (dimensione e «Svuota»: cancella `listing-*.tsv`, `cache/thumbs`, `cache/preview`), registro tecnico.
+  Non messi: «Tema» e «Colori dal wallpaper» (l'app segue già il sistema, non c'è una scelta da fare).
+- Immich (`ImmichScreen`, design "Impostazioni · Immich"): scheda «Collegato» con «Verifica» (chiede al server con
+  l'accesso salvato), indirizzo e account con «Cambia» (= esci e accedi di nuovo), quando/cosa inviare, «Invia solo
+  con Wi‑Fi», «Vedi gli invii», «Scollega Immich». Non messi: «Invia solo in carica», «Salta i file già su Immich»
+  come interruttore (lo fa sempre), «Album su Immich» (l'app non crea album).
+- Permessi al primo avvio (`PermissionsScreen`): dispositivi nelle vicinanze e notifiche, ognuno con «Consenti»;
+  se Android non mostra più la richiesta si apre la pagina dell'app nelle impostazioni. Pref `permsShown`.
+- Batteria (`BatteryScreen`) al posto della finestra di conferma di prima; anche da Impostazioni › Batteria.
+- Galleria vuota (`EmptyGallery`): «Nessuna foto nuova» con «Mostra tutte le foto» / «Scollega», o «La scheda è vuota».
+- Spazio insufficiente (`LowStorageDialog`): prima di un download con dimensioni vere note, se non sta nello spazio
+  libero (meno 50 MB): «Scarica solo i primi N file», «Libera spazio» (memoria di Android), «Annulla il download».
+- Video non riproducibile (`VideoErrorPanel` nel visore): cosa è il video (codec, bit, dimensioni lette da Media3),
+  perché non va, «Prova lo stesso» (di nuovo con FFmpeg) e «Scarica il video» se non è ancora sul telefono.
+- Invii a Immich: «Il server non risponde» quando l'ultimo tentativo non l'ha raggiunto (`ImmichSync.unreachable`)
+  con «Riprova ora» / «Controlla l'indirizzo»; «Invia ora con i dati mobili» chiede prima conferma con i MB.
+- Mappa: senza internet una griglia al posto delle tessere e l'avviso «Senza internet la mappa non si carica».
+- Notifica: «Download 7 di 12» / «DSCF4827.MOV · 62%»; a fine lotto «Download finito · N file», «La camera ha spento
+  il Wi‑Fi» o «Download annullato». Niente «Pausa» (il download non si mette in pausa) e niente pulsanti nuovi:
+  toccandola si apre l'app, che mostra la scheda giusta.
+- Controllo: kotlinc 2.2.10 contro Compose Desktop 1.8.2 sui file Compose; `MainActivity`, `MapScreen` e
+  `TransferService` solo riletti. Non compilato con Gradle.

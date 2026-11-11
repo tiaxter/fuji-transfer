@@ -108,6 +108,11 @@ data class ViewerLoadUi(
     /** 0..1000 */
     val progress: Int = 0,
     val bytes: String = "",
+    /** A video the phone could not play: what it is ("È un video H.265, 3840 × 2160") and why; "" = no error. */
+    val videoWhat: String = "",
+    val videoWhy: String = "",
+    /** The video is not on the phone yet: the error panel offers "Scarica il video". */
+    val videoCanDownload: Boolean = false,
 )
 
 /** What is on its way over the picture (preview or original): a status line, a thin wavy bar, the bytes so far. */

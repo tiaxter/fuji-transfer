@@ -146,7 +146,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
     /** The user went back to the gallery: downloads go on, a strip (and the notification) bring them back. */
     private var downloadsHidden = false
-    /** A batch started by "Carica": it runs behind the gallery (strip), not on the download screen. */
+    /** A batch started by "Immich": it runs behind the gallery (strip), not on the download screen. */
     private var quietBatchPending = false
     private var mapScreen: MapScreen? = null
     /** Gallery limited to an area picked on the map (keys name|date), null = no area filter. */
@@ -186,6 +186,21 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var viewerHost by mutableStateOf<Pair<ViewerState, ViewerActions>?>(null)
     /** Shown over the grid when it has nothing to show (a note on why); empty = hidden. */
     private var emptyText by mutableStateOf("")
+    /** The gallery has nothing to show: 1 = every file is on the phone already ("Nessuna foto nuova"), 2 = the
+     *  card is empty; 0 = [emptyText] (or nothing) says it. */
+    private var emptyKind by mutableStateOf(0)
+
+    // "Impostazioni", the battery screen, the first-start permissions and the low-storage dialog
+    private var settingsOpen by mutableStateOf(false)
+    /** Bumped when something the settings show changed (pairing, battery, saved data). */
+    private var settingsTick by mutableStateOf(0)
+    private var savedDataBytes = 0L
+    /** The battery screen is shown; its two buttons run this afterwards. */
+    private var batteryThen by mutableStateOf<(() -> Unit)?>(null)
+    private var permsOpen by mutableStateOf(false)
+    /** Bumped after Android's permission dialog, so the permissions screen reads the state again. */
+    private var permTick by mutableStateOf(0)
+    private var lowStorage by mutableStateOf<LowStorageInfo?>(null)
     // top (bar, banner, chips, work bar) and bottom (download strip, selection bar) of the gallery: Compose
     private var galleryTopUi by mutableStateOf(GalleryTopUi())
     private var galleryBottomUi by mutableStateOf(GalleryBottomUi())
@@ -210,7 +225,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var immichQueued: Set<String> = emptySet()
     private var immichDone: Set<String> = emptySet()
     private var immichVersion = -1
-    /** The last "Carica" from the gallery, for Annulla; [uploadSnack] is its message ("" = none). */
+    /** The last "Immich" from the gallery, for Annulla; [uploadSnack] is its message ("" = none). */
     private var lastQueued: List<ObjectInfo> = emptyList()
     private var uploadSnack = ""
     private val snackHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -402,7 +417,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         bindViews()
         seenBatchId = TransferState.lastBatch?.id ?: 0L
         setContent { FujiTheme { AppRoot() } }
-        requestRuntimePermissions()
+        // the first start explains the two permissions before Android asks; later the "Connetti" asks if needed
+        val prefs = getSharedPreferences("fuji", MODE_PRIVATE)
+        if (!prefs.getBoolean("permsShown", false) && (!hasBlePermissions() || !hasNotifPermission())) permsOpen = true
         val filter = IntentFilter(ACTION_USB_PERMISSION)
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(usbReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         else registerReceiver(usbReceiver, filter)
@@ -452,6 +469,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             v.requestClose() // the viewer closes into its grid cell
             return
         }
+        if (lowStorage != null) {
+            lowStorage = null
+            return
+        }
+        if (batteryThen != null) {
+            batteryLater()
+            return
+        }
         if (logOpen) {
             logOpen = false // the log screen is over everything: back closes it first
             return
@@ -462,6 +487,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         if (uploadsOpen) {
             uploadsOpen = false
+            return
+        }
+        if (settingsOpen) {
+            settingsOpen = false
             return
         }
         if (doneOpen) {
@@ -517,6 +546,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             }
         }
         TransferState.add(this)
+        permTick++ // a permission or the battery limit may have changed in Android's settings
+        settingsTick++
         onChanged()
         DebugLog.add("app in primo piano")
     }
@@ -649,6 +680,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         onShareLog = { shareLog() },
                         onImmich = { showUploads() },
                         onSavedGallery = { openSavedGallery() },
+                        onSettings = { openSettings() },
                     ),
                 )
             }
@@ -672,7 +704,19 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     GalleryTop(galleryTopUi, galleryTopActions)
                     androidx.compose.foundation.layout.Box(Modifier.weight(1f).fillMaxWidth()) {
                         GalleryGrid(rows, gridTick, selected.isNotEmpty(), gridActions, gridScrollToken, gridScrollRow)
-                        if (emptyText.isNotEmpty()) {
+                        if (emptyKind != 0) {
+                            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background)) {
+                                EmptyGallery(
+                                    cardEmpty = emptyKind == 2, total = formatCount(TransferState.objects.size),
+                                    onShowAll = {
+                                        filter = Filter.ALL
+                                        rebuildRows()
+                                        updateChips()
+                                    },
+                                    onDisconnect = { confirmDisconnect() },
+                                )
+                            }
+                        } else if (emptyText.isNotEmpty()) {
                             androidx.compose.material3.Text(
                                 emptyText, Modifier.align(androidx.compose.ui.Alignment.Center).fillMaxWidth().padding(32.dp),
                                 color = c.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -745,6 +789,16 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     }
                 }
             }
+            Layer(settingsOpen) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
+                    SettingsScreen(settingsGroups(settingsTick, keepAwakeState), onBack = { settingsOpen = false; onChanged() })
+                }
+            }
+            Layer(batteryThen != null) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
+                    BatteryScreen(onAllow = { batteryAllow() }, onLater = { batteryLater() })
+                }
+            }
             Layer(logOpen) {
                 androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
                     LogScreen(
@@ -771,6 +825,40 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         thumb = { k -> TransferState.objects.firstOrNull { key(it) == k }?.let { Thumbs.get(it) } },
                     )
                 }
+            }
+            Layer(permsOpen) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
+                    // read again after Android's answers and when coming back from its settings
+                    val (near, notif) = androidx.compose.runtime.remember(permTick) { hasBlePermissions() to hasNotifPermission() }
+                    PermissionsScreen(
+                        near = near, notif = notif,
+                        onNear = { askPermissions(nearPermissions(), "nearAsked") },
+                        onNotif = { askPermissions(notifPermissions(), "notifAsked") },
+                        onContinue = {
+                            permsOpen = false
+                            getSharedPreferences("fuji", MODE_PRIVATE).edit().putBoolean("permsShown", true).apply()
+                        },
+                    )
+                }
+            }
+            lowStorage?.let { info ->
+                LowStorageDialog(
+                    info,
+                    onFirst = {
+                        lowStorage = null
+                        downloadsHidden = false
+                        startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, info.fitHandles) }
+                    },
+                    onFree = {
+                        lowStorage = null
+                        try {
+                            startActivity(Intent(android.provider.Settings.ACTION_INTERNAL_STORAGE_SETTINGS))
+                        } catch (e: android.content.ActivityNotFoundException) {
+                            DebugLog.add("impostazioni della memoria non disponibili su questo telefono")
+                        }
+                    },
+                    onCancel = { lowStorage = null },
+                )
             }
             detailsInfo?.let { info ->
                 DetailsSheet(
@@ -887,27 +975,30 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val pm = getSystemService(android.os.PowerManager::class.java)
         if (pm.isIgnoringBatteryOptimizations(packageName) || prefs.getBoolean("batteryAsked", false)) return false
         prefs.edit().putBoolean("batteryAsked", true).apply()
-        appDialog = AppDialog.Confirm(
-            title = "Connessione a schermo spento",
-            message = "Con lo schermo spento il telefono può fermare la connessione con la camera. " +
-                "Escludere Fuji Transfer dall'ottimizzazione della batteria può aiutare a non perderla durante " +
-                "elenchi e download lunghi.",
-            confirm = "Escludi",
-            dismiss = "Non ora",
-            onConfirm = {
-                try {
-                    @android.annotation.SuppressLint("BatteryLife")
-                    val i = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                        android.net.Uri.parse("package:$packageName"))
-                    startActivity(i)
-                } catch (e: android.content.ActivityNotFoundException) {
-                    DebugLog.add("richiesta di esclusione dall'ottimizzazione batteria non disponibile su questo telefono")
-                }
-                then()
-            },
-            onDismiss = { then() },
-        )
+        batteryThen = then
         return true
+    }
+
+    /** "Consenti" on the battery screen: Android's own confirmation, then whatever was waiting. */
+    private fun batteryAllow() {
+        val then = batteryThen ?: {}
+        batteryThen = null
+        try {
+            @android.annotation.SuppressLint("BatteryLife")
+            val i = Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                android.net.Uri.parse("package:$packageName"))
+            startActivity(i)
+        } catch (e: android.content.ActivityNotFoundException) {
+            DebugLog.add("richiesta di esclusione dall'ottimizzazione batteria non disponibile su questo telefono")
+        }
+        settingsTick++
+        then()
+    }
+
+    private fun batteryLater() {
+        val then = batteryThen ?: {}
+        batteryThen = null
+        then()
     }
 
     override fun onChanged() {
@@ -1052,7 +1143,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 val how = when (immichSettings.mode) {
                     ImmichSync.MODE_AUTO -> "Dopo ogni download"
                     ImmichSync.MODE_OFFER -> "Chiede a fine download"
-                    else -> "Carichi tu dalla galleria"
+                    else -> "Invii tu dalla galleria"
                 }
                 val waiting = immichQueued.size
                 if (waiting > 0) "$how · $waiting in coda" else how
@@ -1285,6 +1376,13 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         rows = out
         flatTiles = out.filterIsInstance<GridRow.Tiles>().flatMap { it.items }
         flatIndex = flatTiles.withIndex().associate { it.value.handle to it.index }
+        val noFilters = areaKeys == null && dateRange == null && films.isEmpty()
+        emptyKind = when {
+            !(files.isEmpty() && TransferState.connected) -> 0
+            all.isEmpty() && !TransferState.listing -> 2
+            all.isNotEmpty() && noFilters && filter == Filter.NEW && !TransferState.listing -> 1
+            else -> 0
+        }
         emptyText = if (!(files.isEmpty() && TransferState.connected)) "" else when {
             all.isEmpty() -> "Nessun file sulla camera."
             areaKeys != null || dateRange != null || films.isNotEmpty() ->
@@ -1556,6 +1654,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         var player: androidx.media3.exoplayer.ExoPlayer? = null
         private val handler = android.os.Handler(android.os.Looper.getMainLooper())
         val info: ObjectInfo get() = items[index]
+        /** The last video that failed to play ("Prova lo stesso" plays it again with FFmpeg first). */
+        var lastVideo: java.io.File? = null
+
+        fun retryVideo() {
+            val f = lastVideo ?: return
+            loadUi = loadUi.copy(videoWhat = "", videoWhy = "", status = "Riprovo con il decoder software…")
+            playVideo(f, ffmpegFirst = true)
+        }
         /** What the current file shows: 0 nothing, 1 its thumbnail, 2 the quick preview, 3 the original. */
         var level = 0
         /** The original of the current file was asked of the service (ACTION_VIEW). */
@@ -1603,6 +1709,12 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 onDismiss = { close() },
                 originFor = { i -> items.getOrNull(i)?.let { tileBounds(it.handle) } },
                 ensureVisible = { i -> items.getOrNull(i)?.let { scrollGridTo(it) } },
+                onVideoRetry = { retryVideo() },
+                onVideoDownload = {
+                    loadUi = loadUi.copy(videoCanDownload = false)
+                    downloadsHidden = false
+                    startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, longArrayOf(info.handle)) }
+                },
             )
             showing = true
             viewerHost = ui to actions
@@ -1974,9 +2086,26 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     }
                     ui.videoVisible = false
                     ui.loadingVisible = true
-                    loadUi = loadUi.copy(status = "Questo video non si può riprodurre sul telefono (${error.errorCodeName})")
-                    loadUi = loadUi.copy(progressVisible = false)
-                    loadUi = loadUi.copy(bytes = "")
+                    lastVideo = f
+                    // what the file is, from the track Media3 read (nothing guessed when it read none)
+                    val fmt = p.videoFormat
+                    val codec = when {
+                        fmt?.sampleMimeType?.contains("hevc") == true -> "H.265"
+                        fmt?.sampleMimeType?.contains("avc") == true -> "H.264"
+                        else -> fmt?.sampleMimeType?.substringAfter('/')?.uppercase(Locale.ROOT)
+                    }
+                    val bits = fmt?.colorInfo?.lumaBitdepth?.takeIf { it > 8 }?.let { " a $it bit" } ?: ""
+                    val size = if (fmt != null && fmt.width > 0 && fmt.height > 0) ", ${fmt.width} × ${fmt.height}" else ""
+                    loadUi = loadUi.copy(
+                        status = "Questo video non si può riprodurre sul telefono (${error.errorCodeName})",
+                        progressVisible = false,
+                        bytes = "",
+                        videoWhat = if (codec != null) "È un video $codec$bits$size." else "Errore del lettore: ${error.errorCodeName}.",
+                        videoWhy = (if (ffmpegFirst) "Né il decoder del telefono né quello di ripiego (FFmpeg) riescono a riprodurlo. "
+                        else "Il lettore del telefono si è fermato (${error.errorCodeName}). ") +
+                            "Puoi scaricarlo e guardarlo su un computer o su un altro telefono.",
+                        videoCanDownload = key(info) !in done && TransferState.connected,
+                    )
                 }
             })
             p.setMediaItem(androidx.media3.common.MediaItem.fromUri(android.net.Uri.fromFile(f)), startMs)
@@ -2187,7 +2316,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     /**
      * A batch ended. Dropped because the camera switched its Wi-Fi off: the drop card, always. Otherwise, if its
      * screen was on view: "Download finito", with the Immich question in "Chiedi a fine download". A batch that
-     * ran behind the gallery ("Continua in background", "Carica") only gets the toast; a cancelled one nothing.
+     * ran behind the gallery ("Continua in background", "Immich") only gets the toast; a cancelled one nothing.
      */
     private fun onBatchEnded(b: BatchResult, wasVisible: Boolean) {
         if (b.saved.isNotEmpty()) {
@@ -2436,6 +2565,174 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     private fun key(i: ObjectInfo) = "${i.filename}|${i.captureDate}"
 
+    // ------------------------------------------------------------------ space on the phone
+
+    /**
+     * Before a download: if the files' real sizes are known and they do not fit in the free space (keeping 50 MB
+     * for Android), the low-storage dialog opens instead and this returns true. Unknown sizes: no check.
+     */
+    private fun checkSpace(files: List<ObjectInfo>): Boolean {
+        if (!TransferState.sizesKnown || files.any { it.sizeOverflow() }) return false
+        val need = files.sumOf { it.size }
+        val free = try {
+            android.os.StatFs(android.os.Environment.getExternalStorageDirectory().path).availableBytes
+        } catch (e: Exception) {
+            return false
+        }
+        val room = free - 50L * 1024 * 1024
+        if (need <= room) return false
+        var sum = 0L
+        val fit = ArrayList<ObjectInfo>()
+        for (f in files) {
+            if (sum + f.size > room) break
+            sum += f.size
+            fit.add(f)
+        }
+        DebugLog.add("spazio insufficiente: servono ${formatSize(need)}, liberi ${formatSize(free)}")
+        lowStorage = LowStorageInfo(formatSize(need), formatSize(free.coerceAtLeast(0)), fit.size, formatSize(sum), fit.map { it.handle }.toLongArray())
+        return true
+    }
+
+    // ------------------------------------------------------------------ permissions
+
+    private fun nearPermissions(): List<String> = when {
+        Build.VERSION.SDK_INT >= 33 -> listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.NEARBY_WIFI_DEVICES)
+        Build.VERSION.SDK_INT >= 31 -> listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.ACCESS_FINE_LOCATION)
+        else -> listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+    private fun notifPermissions(): List<String> =
+        if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()
+
+    private fun hasNotifPermission(): Boolean =
+        notifPermissions().all { checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
+
+    /**
+     * Android's dialog for [perms]; when it no longer shows (refused twice, or "non chiedere più"), the app's page
+     * in Android's settings instead.
+     */
+    private fun askPermissions(perms: List<String>, askedPref: String) {
+        val missing = perms.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        if (missing.isEmpty()) return
+        val prefs = getSharedPreferences("fuji", MODE_PRIVATE)
+        if (prefs.getBoolean(askedPref, false) && missing.none { shouldShowRequestPermissionRationale(it) }) {
+            try {
+                startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:$packageName")))
+            } catch (e: android.content.ActivityNotFoundException) {
+                DebugLog.add("impostazioni dell'app non disponibili")
+            }
+            return
+        }
+        prefs.edit().putBoolean(askedPref, true).apply()
+        requestPermissions(missing.toTypedArray(), 2)
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        permTick++
+        settingsTick++
+    }
+
+    // ------------------------------------------------------------------ settings
+
+    private fun openSettings() {
+        savedDataBytes = savedDataSize()
+        settingsTick++
+        settingsOpen = true
+    }
+
+    /** The listings, thumbnails and previews the app keeps, in bytes. */
+    private fun savedDataSize(): Long {
+        fun size(f: java.io.File): Long = if (f.isDirectory) f.listFiles()?.sumOf { size(it) } ?: 0L else f.length()
+        val listings = filesDir.listFiles { f -> f.name.startsWith("listing-") }?.sumOf { it.length() } ?: 0L
+        return listings + size(java.io.File(cacheDir, "thumbs")) + size(java.io.File(cacheDir, "preview"))
+    }
+
+    private fun confirmClearSaved() {
+        appDialog = AppDialog.Confirm(
+            title = "Svuotare elenco e miniature?",
+            message = "Si cancellano l'elenco delle foto salvato e le miniature. Le foto scaricate restano dove sono. " +
+                "Il prossimo collegamento rilegge tutto dalla camera, quindi è più lento.",
+            confirm = "Svuota",
+            dismiss = "Annulla",
+            onConfirm = {
+                filesDir.listFiles { f -> f.name.startsWith("listing-") }?.forEach { it.delete() }
+                java.io.File(cacheDir, "thumbs").listFiles()?.forEach { it.delete() }
+                java.io.File(cacheDir, "preview").listFiles()?.forEach { it.delete() }
+                cacheKey = null
+                cache = null
+                DebugLog.add("elenco e miniature salvati cancellati")
+                savedDataBytes = savedDataSize()
+                settingsTick++
+                onChanged()
+            },
+        )
+    }
+
+    /** The rows of "Impostazioni"; [tick] and [awake] are read so the screen follows changes. */
+    private fun settingsGroups(@Suppress("UNUSED_PARAMETER") tick: Int, awake: Boolean): List<SettingGroup> {
+        val st = TransferState
+        val idle = !st.connected && !st.busy
+        val paired = pairing()
+        val pm = getSystemService(android.os.PowerManager::class.java)
+        val unlimited = pm.isIgnoringBatteryOptimizations(packageName)
+        val im = ImmichSync.settings(this)
+        val imSub = if (!im.configured) "Non collegato · facoltativo" else listOf(
+            "Collegato a " + im.url.trim().substringAfter("://").substringBefore('/').substringBefore(':'),
+            when (im.mode) {
+                ImmichSync.MODE_AUTO -> "dopo ogni download"
+                ImmichSync.MODE_OFFER -> "chiede a fine download"
+                else -> "solo quando lo chiedo"
+            },
+            if (im.wifiOnly) "solo Wi‑Fi" else "anche dati mobili",
+        ).joinToString(" · ")
+        return listOf(
+            SettingGroup("Camera", listOf(
+                SettingRow(
+                    R.drawable.ic_camera, if (paired != null) paired.name.ifEmpty { "Camera abbinata" } else "Nessuna camera abbinata",
+                    if (paired != null) "Abbinata: l'abbinamento si riusa, anche quello di XApp" else "Si usa l'abbinamento di XApp, se c'è",
+                    button = if (paired != null) "Dimentica" else "", onButton = { confirmForget() }, enabled = idle || paired == null,
+                ),
+                SettingRow(R.drawable.ic_plus, "Abbina nuova camera", onClick = {
+                    settingsOpen = false
+                    startBle(TransferService.ACTION_PAIR_BLE)
+                }, enabled = idle),
+            )),
+            SettingGroup("Download", listOf(
+                SettingRow(R.drawable.ic_sun, "Tieni lo schermo acceso", "Durante i download, a luce minima", switch = awake, onSwitch = { setKeepAwake(it) }),
+                SettingRow(R.drawable.ic_folder, "Cartella di salvataggio", "Foto in Pictures/Fujifilm, video in Movies/Fujifilm, RAW in Download/Fujifilm"),
+            )),
+            SettingGroup("Batteria", listOf(
+                SettingRow(
+                    R.drawable.ic_battery, "Uso in background",
+                    if (unlimited) "Senza limiti" else "Limitato da Android · consigliato: senza limiti",
+                    onClick = {
+                        if (unlimited) {
+                            try {
+                                startActivity(Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            } catch (e: android.content.ActivityNotFoundException) {
+                                DebugLog.add("impostazioni batteria non disponibili")
+                            }
+                        } else {
+                            batteryThen = {}
+                        }
+                    },
+                ),
+            )),
+            SettingGroup("Immich", listOf(
+                SettingRow(R.drawable.ic_immich, "Immich", imSub, onClick = { showImmich() }),
+            )),
+            SettingGroup("Dati salvati", listOf(
+                SettingRow(
+                    R.drawable.ic_photos, "Elenco e miniature",
+                    formatSize(savedDataBytes) + " · dopo lo svuotamento il prossimo collegamento è più lento",
+                    button = "Svuota", onButton = { confirmClearSaved() }, enabled = idle,
+                ),
+                SettingRow(R.drawable.ic_log, "Registro tecnico", onClick = { showLog() }),
+            )),
+        )
+    }
+
     // ------------------------------------------------------------------ saved gallery ("Dalla cache")
 
     /** The listing saved at the last connection to the paired camera, newest first; null = none. */
@@ -2551,13 +2848,15 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             onChanged()
             return
         }
-        val handles = TransferState.objects.filter { it.handle in selected }.map { it.handle }
+        val chosen = TransferState.objects.filter { it.handle in selected }
+        val handles = chosen.map { it.handle }
         if (handles.isEmpty()) return
+        if (checkSpace(chosen)) return
         downloadsHidden = false
         startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, handles.toLongArray()) }
     }
 
-    // ------------------------------------------------------------------ Immich ("Carica")
+    // ------------------------------------------------------------------ Immich ("Immich")
 
     private fun readImmichMarks() {
         immichVersion = ImmichSync.version
@@ -2597,7 +2896,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         return true
     }
 
-    /** "Carica" in the selection bar: the selection closes and a message says what happens next, with Annulla. */
+    /** "Immich" in the selection bar: the selection closes and a message says what happens next, with Annulla. */
     private fun uploadSelected() {
         val list = shownList.filter { it.handle in selected && key(it) !in immichDone }
         if (list.isEmpty()) {
@@ -2627,7 +2926,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         updateBottom()
     }
 
-    /** "Carica" on one file (details sheet, preview): queue it, or take it out of the queue. */
+    /** "Immich" on one file (details sheet, preview): queue it, or take it out of the queue. */
     private fun toggleUpload(info: ObjectInfo): ImmichMark = when (immichMark(info)) {
         ImmichMark.Queued -> {
             ImmichSync.dequeue(this, listOf(key(info)))

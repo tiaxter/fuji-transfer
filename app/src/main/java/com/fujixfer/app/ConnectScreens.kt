@@ -101,7 +101,22 @@ class ConnectActions(
     val onShareLog: () -> Unit,
     val onImmich: () -> Unit,
     val onSavedGallery: () -> Unit = {},
+    val onSettings: () -> Unit = {},
 )
+
+/** A 48 dp tonal round icon button of the top bar. */
+@Composable
+private fun TopIcon(icon: Int, description: String, onClick: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    Box(
+        Modifier.size(48.dp).clip(CircleShape).background(c.surfaceContainerHighest)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(painterResource(icon), null, Modifier.size(24.dp), tint = c.onSurface)
+    }
+}
 
 @Composable
 fun ConnectScreen(
@@ -119,14 +134,9 @@ fun ConnectScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Fuji Transfer", Modifier.weight(1f), color = c.onSurface, style = type(24, 32, medium = true))
-            Box(
-                Modifier.size(48.dp).clip(CircleShape).background(c.surfaceContainerHighest)
-                    .clickable(role = Role.Button, onClick = a.onLog)
-                    .semantics { contentDescription = "Registro tecnico" },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(painterResource(R.drawable.ic_log), null, Modifier.size(24.dp), tint = c.onSurface)
-            }
+            TopIcon(R.drawable.ic_log, "Registro tecnico", a.onLog)
+            Spacer(Modifier.width(8.dp))
+            TopIcon(R.drawable.ic_settings, "Impostazioni", a.onSettings)
         }
 
         Column(
@@ -368,7 +378,7 @@ private fun BackupCard(linked: Boolean, sub: String, onClick: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (linked) "Caricamenti" else "Collega", color = if (linked) c.onTertiary else c.onPrimary,
+                if (linked) "Invii" else "Collega", color = if (linked) c.onTertiary else c.onPrimary,
                 style = type(14, 20, medium = true),
             )
         }

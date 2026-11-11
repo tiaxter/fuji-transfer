@@ -131,6 +131,9 @@ class ViewerActions(
     val originFor: (Int) -> Rect?,
     /** Scrolls the grid so that file [index] has a cell on screen (the viewer is closing onto it). */
     val ensureVisible: (Int) -> Unit,
+    /** The video error panel: play it anyway, or save it to the phone. */
+    val onVideoRetry: () -> Unit = {},
+    val onVideoDownload: () -> Unit = {},
 )
 
 private const val MAX_ZOOM = 8f
@@ -509,7 +512,16 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                     .graphicsLayer { alpha = bottomAlpha * (1f - (progress * 3f).coerceAtMost(1f)) },
             ) {
                 if (s.loadingVisible) {
-                    Box(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) { ViewerLoading(s.load) }
+                    if (s.load.videoWhat.isNotEmpty()) {
+                        Box(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
+                            VideoErrorPanel(
+                                s.load.videoWhat, s.load.videoWhy, a.onVideoRetry,
+                                if (s.load.videoCanDownload) a.onVideoDownload else null,
+                            )
+                        }
+                    } else {
+                        Box(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) { ViewerLoading(s.load) }
+                    }
                 }
                 ViewerStrip(s.items, s.index, s.stripTick, a.onJump)
             }

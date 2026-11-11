@@ -16,7 +16,7 @@ import java.io.IOException
  * Sends to the user's Immich server the camera files the user chose (design "Immich: caricare solo quando lo
  * scegli"). Nothing goes up on its own unless the user picked "Sempre, dopo ogni download".
  *
- * A file joins the queue in three ways: "Carica" in the gallery or on a photo ([MODE_ASK] and always), the answer
+ * A file joins the queue in three ways: "Immich" in the gallery or on a photo ([MODE_ASK] and always), the answer
  * to the question at the end of a download ([MODE_OFFER]), or the end of every download ([MODE_AUTO], only the
  * kinds of file chosen in "Cosa caricare"). Each queued file is hashed (SHA-1) and the server is asked whether it
  * has it; only a file it lacks is uploaded ("C'era già" otherwise). The work runs as a job with a network
@@ -53,12 +53,14 @@ object ImmichSync {
     private const val PREF_ANY_ONCE = "immich_any_once"
     /** Why nothing can go up (address or access refused); empty = fine. */
     private const val PREF_BLOCKED = "immich_blocked"
+    /** The last run could not reach the server (timeout, no route): why, "" = it answered. */
+    private const val PREF_UNREACHABLE = "immich_unreachable"
     private const val HISTORY_MAX = 200
     private const val JOB_ID = 4711
     private const val DEVICE_ID = "fuji-transfer"
     private val FOLDERS = listOf("Pictures/Fujifilm", "Movies/Fujifilm", "Download/Fujifilm")
 
-    /** "Solo quando lo chiedo": the gallery's "Carica" only. */
+    /** "Solo quando lo chiedo": the gallery's "Immich" only. */
     const val MODE_ASK = "ask"
     /** "Chiedi a fine download": one question after every batch. */
     const val MODE_OFFER = "offer"
@@ -190,6 +192,12 @@ object ImmichSync {
 
     /** Why nothing can go up (access or address refused), empty when fine. */
     fun blocked(c: Context): String = prefs(c).getString(PREF_BLOCKED, "") ?: ""
+
+    fun unreachable(c: Context): String = prefs(c).getString(PREF_UNREACHABLE, "") ?: ""
+
+    private fun setUnreachable(c: Context, why: String) {
+        prefs(c).edit().putString(PREF_UNREACHABLE, why).apply()
+    }
 
     private fun setBlocked(c: Context, why: String) {
         prefs(c).edit().putString(PREF_BLOCKED, why).apply()
@@ -412,6 +420,7 @@ object ImmichSync {
                 markOnServer(c, camKey)
                 addHistory(c, camKey, item.size, outcome == ImmichClient.Outcome.DUPLICATE)
                 if (blocked(c).isNotEmpty()) setBlocked(c, "")
+                if (unreachable(c).isNotEmpty()) setUnreachable(c, "")
             } catch (e: ImmichClient.ImmichException) {
                 if (e.code == 401 || e.code == 403 || e.code == 404) {
                     // address or access: every file would get the same answer
@@ -426,8 +435,10 @@ object ImmichSync {
                 }
                 return finish(c, true, "Immich: ${e.message}, riprovo più tardi", synced)
             } catch (e: java.net.SocketTimeoutException) {
+                setUnreachable(c, e.message ?: "nessuna risposta")
                 return finish(c, true, "Immich: il server non ha risposto (${e.message}), riprovo più tardi", synced)
             } catch (e: IOException) {
+                setUnreachable(c, e.message ?: "rete")
                 return finish(c, true, "Immich non raggiungibile (${e.message}): riprovo più tardi", synced)
             } catch (e: SecurityException) {
                 refused++

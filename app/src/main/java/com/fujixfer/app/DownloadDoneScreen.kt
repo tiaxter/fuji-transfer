@@ -43,7 +43,7 @@ import com.fujixfer.core.ObjectInfo
 enum class DoneImmich {
     /** Immich not set up, or "Solo quando lo chiedo": nothing to ask. */
     None,
-    /** "Chiedi a fine download": "Caricarli anche su Immich?". */
+    /** "Chiedi a fine download": "Inviarli anche a Immich?". */
     Ask,
     /** The files went to the queue (answer yes, or "Sempre"). */
     Queued,
@@ -98,7 +98,7 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
                     contentDescription = if (picking) "Annulla" else "Torna alla galleria", tint = c.onSurface,
                 )
             }
-            Text(if (picking) "Scegli cosa caricare" else "Download", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text(if (picking) "Scegli cosa inviare" else "Download", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
         }
 
         if (ui.dropped) {
@@ -143,7 +143,7 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
                     FujiButton("Vedi", a.onSeeUploads, kind = ButtonKind.Text, height = 40.dp, contentColor = c.onTertiaryContainer)
                 }
                 DoneImmich.Declined -> Text(
-                    "Niente su Immich. Puoi caricarle più tardi dalla galleria: selezionale e tocca Carica.",
+                    "Niente su Immich. Puoi inviarle più tardi dalla galleria: selezionale e tocca Immich.",
                     Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
                         .background(c.surfaceContainer).padding(16.dp),
                     color = c.onSurfaceVariant, style = type(14, 20),
@@ -201,8 +201,8 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
                     GroupButton(
                         when (chosen.size) {
                             0 -> "Scegli i file"
-                            1 -> "Carica 1 file · " + formatMb(mb)
-                            else -> "Carica ${chosen.size} file · " + formatMb(mb)
+                            1 -> "Invia 1 file · " + formatMb(mb)
+                            else -> "Invia ${chosen.size} file · " + formatMb(mb)
                         },
                         first = false, container = if (chosen.isEmpty()) c.surfaceContainerHighest else c.tertiary,
                         content = if (chosen.isEmpty()) c.onSurfaceVariant else c.onTertiary,
@@ -232,7 +232,7 @@ private fun AskCard(onNo: () -> Unit, onPick: () -> Unit) {
                 Icon(painterResource(R.drawable.ic_cloud_upload), null, Modifier.size(22.dp), tint = c.onTertiary)
             }
             Column(Modifier.padding(start = 14.dp)) {
-                Text("Caricarli anche su Immich?", color = c.onTertiaryContainer, style = type(18, 24, medium = true))
+                Text("Inviarli anche a Immich?", color = c.onTertiaryContainer, style = type(18, 24, medium = true))
                 Text(
                     "Partono appena c'è la rete giusta, anche ad app chiusa. Quelli che Immich ha già vengono saltati.",
                     Modifier.padding(top = 2.dp), color = c.onTertiaryContainer, style = type(14, 20),
@@ -245,7 +245,7 @@ private fun AskCard(onNo: () -> Unit, onPick: () -> Unit) {
                 onClick = onNo, modifier = Modifier.weight(1f), height = 48.dp, textSize = 14,
             )
             GroupButton(
-                "Carica file", first = false, container = c.tertiary, content = c.onTertiary,
+                "Scegli i file", first = false, container = c.tertiary, content = c.onTertiary,
                 onClick = onPick, modifier = Modifier.weight(1.6f), height = 48.dp, textSize = 14,
             )
         }

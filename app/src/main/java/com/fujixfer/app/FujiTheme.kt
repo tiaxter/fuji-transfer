@@ -37,7 +37,7 @@ fun FujiTheme(content: @Composable () -> Unit) {
         surfaceContainer = colorResource(R.color.md_surface_container),
         surfaceContainerHigh = colorResource(R.color.md_surface_high),
         surfaceContainerHighest = colorResource(R.color.md_surface_highest),
-        // the snackbar after "Carica": the opposite of the surface, in light and in dark
+        // the snackbar after "Immich": the opposite of the surface, in light and in dark
         inverseSurface = colorResource(R.color.md_on_surface),
         inverseOnSurface = colorResource(R.color.md_background),
         inversePrimary = colorResource(R.color.md_primary_container),

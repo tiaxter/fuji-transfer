@@ -58,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -463,9 +464,44 @@ class MapScreen(
                 },
             ) {
                 AndroidView(modifier = Modifier.fillMaxSize(), factory = { ctx -> createMapView(ctx) })
+                // without internet (on the camera's Wi-Fi, no mobile data) the tiles cannot load: a plain grid and a
+                // note instead of an empty map; zones and photos come from the app's own data and still work
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                var online by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(true) }
+                androidx.compose.runtime.LaunchedEffect(Unit) {
+                    while (true) {
+                        online = hasInternet(ctx)
+                        kotlinx.coroutines.delay(3000)
+                    }
+                }
+                if (!online) {
+                    val line = c.outlineVariant
+                    Box(
+                        Modifier.fillMaxSize().background(c.surfaceContainer).drawBehind {
+                            val step = 44.dp.toPx()
+                            var x = 0f
+                            while (x < size.width) { drawLine(line, Offset(x, 0f), Offset(x, size.height), 1f); x += step }
+                            var y = 0f
+                            while (y < size.height) { drawLine(line, Offset(0f, y), Offset(size.width, y), 1f); y += step }
+                        },
+                    )
+                }
                 ZoneLayer()
                 SearchBar(Modifier.align(Alignment.TopCenter))
                 MapControls(Modifier.align(Alignment.TopEnd))
+                if (!online) {
+                    Row(
+                        Modifier.align(Alignment.TopStart).padding(start = 16.dp, top = 72.dp).width(252.dp)
+                            .shadow(2.dp, RoundedCornerShape(20.dp)).background(c.secondaryContainer, RoundedCornerShape(20.dp))
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                    ) {
+                        Icon(painterResource(R.drawable.ic_wifi_off), null, Modifier.size(20.dp), tint = c.onSecondaryContainer)
+                        Text(
+                            "Senza internet la mappa non si carica. Le zone e le foto funzionano lo stesso.",
+                            Modifier.padding(start = 10.dp), color = c.onSecondaryContainer, style = type(13, 18),
+                        )
+                    }
+                }
                 if (emptyNote.isNotEmpty()) {
                     Text(
                         emptyNote,
@@ -819,4 +855,11 @@ class MapScreen(
         /** Deepest zoom: closer than this, photos at the same spot stay one circle and a tap selects them. */
         const val MAX_ZOOM = 17.0
     }
+}
+
+/** The phone's default network reaches the internet (Android validated it). */
+private fun hasInternet(ctx: android.content.Context): Boolean {
+    val cm = ctx.getSystemService(android.net.ConnectivityManager::class.java) ?: return true
+    val caps = cm.activeNetwork?.let { cm.getNetworkCapabilities(it) } ?: return false
+    return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 }

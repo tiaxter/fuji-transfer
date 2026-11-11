@@ -96,7 +96,7 @@ class TileUi(
     val done: Boolean,
     /** Known to be on the Immich server. */
     val onImmich: Boolean = false,
-    /** Asked with "Carica", not sent yet. */
+    /** Asked with "Immich", not sent yet. */
     val immichQueued: Boolean = false,
     /** "RAW", "VIDEO", the extension, or the film simulation; null = no badge. */
     val badge: String?,

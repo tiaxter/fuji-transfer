@@ -128,7 +128,7 @@ fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Uni
             Box(Modifier.size(2.dp))
             GroupButton(
                 when (immich) {
-                    ImmichMark.None -> "Carica"
+                    ImmichMark.None -> "Immich"
                     ImmichMark.Queued -> "In coda"
                     ImmichMark.Done -> "Su Immich"
                 },
@@ -152,7 +152,7 @@ fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Uni
                 },
                 textSize = 14,
                 description = when (immich) {
-                    ImmichMark.None -> "Carica su Immich"
+                    ImmichMark.None -> "Invia a Immich"
                     ImmichMark.Queued -> "In coda per Immich, tocca per annullare"
                     ImmichMark.Done -> "Già su Immich"
                 },

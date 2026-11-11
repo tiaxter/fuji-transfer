@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.ConnectivityManager
@@ -49,7 +51,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-/** What the "Caricamenti" screen shows, read from [ImmichSync] about once a second. */
+/** What the "Invii a Immich" screen shows, read from [ImmichSync] about once a second. */
 private class UploadsSnapshot(
     val rows: List<ImmichSync.Row> = emptyList(),
     val running: Boolean = false,
@@ -58,6 +60,9 @@ private class UploadsSnapshot(
     val wifiOnly: Boolean = true,
     val anyOnce: Boolean = false,
     val blocked: String = "",
+    /** The last run did not reach the server ("" = it answered). */
+    val unreachable: String = "",
+    val host: String = "",
     /** The phone is on a network the queue may use now (internet, and unmetered if "solo Wi-Fi"). */
     val networkOk: Boolean = false,
     val unmetered: Boolean = false,
@@ -85,6 +90,8 @@ private fun snapshot(c: Context): UploadsSnapshot {
         wifiOnly = s.wifiOnly,
         anyOnce = anyOnce,
         blocked = ImmichSync.blocked(c),
+        unreachable = ImmichSync.unreachable(c),
+        host = s.url.trim().substringAfter("://").substringBefore('/').substringBefore(':'),
         networkOk = internet && (unmetered || !s.wifiOnly || anyOnce),
         unmetered = unmetered,
         runIndex = ImmichSync.runIndex,
@@ -100,12 +107,14 @@ private fun snapshot(c: Context): UploadsSnapshot {
 private enum class UploadTab { All, Todo, Done }
 
 /**
- * "Caricamenti" (design "Caricamenti · file per file" and "in attesa del Wi‑Fi"): the run going on (files, bytes,
+ * "Invii a Immich" (design "Invii a Immich · file per file", "in attesa del Wi‑Fi", "server non raggiungibile",
+ * "conferma dati mobili"): the run going on (files, bytes,
  * speed, time left) or why the queue is waiting, then every file: going up, refused (with "Riprova"), queued,
  * not on the phone yet, uploaded, or "C'era già" (the server had the same bytes). "Annulla tutti" empties the
  * queue; "Pausa" stops after the file going up.
  * [thumb]: the camera thumbnail of a file ("name|date"), when the app has it.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UploadsScreen(onBack: () -> Unit, onSettings: () -> Unit, thumb: (String) -> Bitmap?) {
     val c = MaterialTheme.colorScheme
@@ -120,6 +129,7 @@ fun UploadsScreen(onBack: () -> Unit, onSettings: () -> Unit, thumb: (String) ->
         }
     }
     fun refresh() { tick++ }
+    var askMobile by remember { mutableStateOf(false) }
 
     val todoStates = setOf(ImmichSync.RowState.Running, ImmichSync.RowState.Failed, ImmichSync.RowState.Queued, ImmichSync.RowState.NotOnPhone)
     val todo = snap.rows.count { it.state in todoStates }
@@ -137,13 +147,13 @@ fun UploadsScreen(onBack: () -> Unit, onSettings: () -> Unit, thumb: (String) ->
             IconButton(onClick = onBack) {
                 Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = c.onSurface)
             }
-            Text("Caricamenti", Modifier.weight(1f).padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text("Invii a Immich", Modifier.weight(1f).padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
             FujiButton("Impostazioni", onSettings, kind = ButtonKind.Text, height = 40.dp)
         }
 
         when {
             !snap.configured -> NoteCard(
-                "Immich non è collegato", "Collega il server per caricare le foto.", R.drawable.ic_immich, error = false,
+                "Immich non è collegato", "Collega il server per inviargli le foto.", R.drawable.ic_immich, error = false,
                 action = "Collega", onAction = onSettings,
             )
             snap.blocked.isNotEmpty() -> NoteCard(
@@ -155,20 +165,30 @@ fun UploadsScreen(onBack: () -> Unit, onSettings: () -> Unit, thumb: (String) ->
                 "In pausa", (if (todo == 1) "1 file aspetta" else "$todo file aspettano") + ": tocca Riprendi per continuare.",
                 R.drawable.ic_cloud_queue, error = false,
             )
+            waitingFiles.isNotEmpty() && snap.networkOk && snap.unreachable.isNotEmpty() -> NoteCard(
+                "Il server non risponde",
+                "Il telefono è in rete, ma ${snap.host.ifEmpty { "il server" }} non è raggiungibile da qui. Se il server è " +
+                    "solo in casa, " + (if (waitingFiles.size == 1) "il file parte" else "i ${waitingFiles.size} file partono") +
+                    " quando ci torni.",
+                R.drawable.ic_wifi_off, error = true,
+                action = "Riprova ora", onAction = { ImmichSync.schedule(ctx); refresh() },
+                second = "Controlla l'indirizzo", onSecond = onSettings,
+            )
             waitingFiles.isNotEmpty() && !snap.networkOk -> {
                 val bytes = waitingFiles.sumOf { it.size.coerceAtLeast(0) }
                 val what = (if (waitingFiles.size == 1) "1 file" else "${waitingFiles.size} file") + ", " + formatBytes(bytes)
                 NoteCard(
                     if (snap.wifiOnly && !snap.anyOnce) "In attesa del Wi‑Fi" else "In attesa della rete",
-                    "$what. Partono da soli appena il telefono è su una rete " +
-                        (if (snap.wifiOnly && !snap.anyOnce) "Wi‑Fi" else "con internet") + ", anche ad app chiusa.",
+                    "$what. Partono da soli appena il telefono è su " +
+                        (if (snap.wifiOnly && !snap.anyOnce) "un Wi‑Fi da cui raggiunge il server" else "una rete con internet") +
+                        ", anche ad app chiusa.",
                     R.drawable.ic_cloud_queue, error = false,
-                    action = if (snap.wifiOnly && !snap.anyOnce) "Carica ora con i dati mobili" else null,
-                    onAction = { ImmichSync.uploadNowAnyNetwork(ctx); refresh() },
+                    action = if (snap.wifiOnly && !snap.anyOnce) "Invia ora con i dati mobili" else null,
+                    onAction = { askMobile = true },
                 )
             }
             waitingFiles.isNotEmpty() -> NoteCard(
-                "Partono a breve", "Il telefono è in rete: Android avvia i caricamenti appena può.",
+                "Partono a breve", "Il telefono è in rete: Android avvia gli invii appena può.",
                 R.drawable.ic_cloud_queue, error = false,
             )
         }
@@ -187,9 +207,9 @@ fun UploadsScreen(onBack: () -> Unit, onSettings: () -> Unit, thumb: (String) ->
             if (shown.isEmpty()) {
                 Text(
                     when (tab) {
-                        UploadTab.All -> "Niente da caricare. In galleria scegli le foto e tocca Carica."
+                        UploadTab.All -> "Niente da inviare. In galleria scegli le foto e tocca Immich."
                         UploadTab.Todo -> "Niente in coda."
-                        UploadTab.Done -> "Nessun file caricato finora."
+                        UploadTab.Done -> "Nessun file inviato finora."
                     },
                     Modifier.align(Alignment.Center).padding(32.dp), color = c.onSurfaceVariant, style = type(14, 20),
                 )
@@ -214,6 +234,45 @@ fun UploadsScreen(onBack: () -> Unit, onSettings: () -> Unit, thumb: (String) ->
                 enabled = todo > 0 || snap.paused, height = 56.dp, textSize = 14,
                 icon = if (snap.paused) R.drawable.ic_play else null,
             )
+        }
+    }
+
+    // "Invia ora con i dati mobili": how much it is first, the plan's data is the user's
+    if (askMobile) {
+        val bytes = waitingFiles.sumOf { it.size.coerceAtLeast(0) }
+        val video = waitingFiles.filter { ImmichSync.kindOf(it.name) == ImmichSync.KIND_VIDEO }.maxByOrNull { it.size }
+        ModalBottomSheet(onDismissRequest = { askMobile = false }, containerColor = c.surfaceContainerHighest) {
+            Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 24.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Box(Modifier.size(48.dp).clip(CircleShape).background(c.tertiaryContainer), contentAlignment = Alignment.Center) {
+                        Icon(painterResource(R.drawable.ic_cloud_upload), null, Modifier.size(24.dp), tint = c.onTertiaryContainer)
+                    }
+                    Column(Modifier.padding(start = 14.dp)) {
+                        Text("Inviare ${formatBytes(bytes)} con i dati mobili?", color = c.onSurface, style = type(20, 26, medium = true))
+                        Text(
+                            (if (waitingFiles.size == 1) "È 1 file" else "Sono ${waitingFiles.size} file") +
+                                (if (video != null && video.size > 0 && waitingFiles.size > 1) ", tra cui un video da ${formatBytes(video.size)}" else "") +
+                                ". Contano sul tuo piano dati.",
+                            Modifier.padding(top = 4.dp), color = c.onSurfaceVariant, style = type(14, 20),
+                        )
+                    }
+                }
+                Row(Modifier.padding(top = 16.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    GroupButton(
+                        "Non ora", first = true, container = c.surface, content = c.onSurface,
+                        onClick = { askMobile = false }, modifier = Modifier.weight(1f), height = 56.dp, textSize = 14,
+                    )
+                    GroupButton(
+                        "Invia ${formatBytes(bytes)}", first = false, container = c.primary, content = c.onPrimary,
+                        onClick = {
+                            askMobile = false
+                            ImmichSync.uploadNowAnyNetwork(ctx)
+                            refresh()
+                        },
+                        modifier = Modifier.weight(1.5f), height = 56.dp, textSize = 14,
+                    )
+                }
+            }
         }
     }
 }
@@ -262,6 +321,7 @@ private fun RunCard(s: UploadsSnapshot) {
 @Composable
 private fun NoteCard(
     title: String, text: String, icon: Int, error: Boolean, action: String? = null, onAction: () -> Unit = {},
+    second: String? = null, onSecond: () -> Unit = {},
 ) {
     val c = MaterialTheme.colorScheme
     val bg = if (error) c.errorContainer else c.tertiaryContainer
@@ -283,9 +343,10 @@ private fun NoteCard(
             }
         }
         if (action != null) {
-            FujiButton(
-                action, onAction, Modifier.padding(top = 14.dp).fillMaxWidth(), kind = ButtonKind.Filled, height = 48.dp,
-            )
+            Row(Modifier.padding(start = 58.dp, top = 14.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FujiButton(action, onAction, kind = ButtonKind.Outlined, height = 44.dp, contentColor = fg)
+                if (second != null) FujiButton(second, onSecond, kind = ButtonKind.Text, height = 44.dp, contentColor = fg)
+            }
         }
     }
 }
@@ -315,7 +376,7 @@ private fun UploadRow(row: ImmichSync.Row, s: UploadsSnapshot, bmp: Bitmap?, onR
         ImmichSync.RowState.Failed -> row.note.replaceFirstChar { it.uppercase() }
         ImmichSync.RowState.Queued -> size
         ImmichSync.RowState.NotOnPhone -> "Non ancora sul telefono: parte dopo il download"
-        ImmichSync.RowState.Done -> if (size.isEmpty()) "Caricato" else "$size · caricato"
+        ImmichSync.RowState.Done -> if (size.isEmpty()) "Inviato" else "$size · inviato"
         ImmichSync.RowState.Skipped -> if (size.isEmpty()) "Stessi byte già su Immich" else "$size · stessi byte già su Immich"
     }
     Row(
@@ -350,7 +411,7 @@ private fun UploadRow(row: ImmichSync.Row, s: UploadsSnapshot, bmp: Bitmap?, onR
             ImmichSync.RowState.Done -> Box(
                 Modifier.size(32.dp).clip(CircleShape).background(c.primary), contentAlignment = Alignment.Center,
             ) {
-                Icon(painterResource(R.drawable.ic_check), contentDescription = "Caricato", Modifier.size(18.dp), tint = c.onPrimary)
+                Icon(painterResource(R.drawable.ic_check), contentDescription = "Inviato", Modifier.size(18.dp), tint = c.onPrimary)
             }
             ImmichSync.RowState.Skipped -> Text("C'era già", color = c.onSurfaceVariant, style = type(14, 20, medium = true))
         }
