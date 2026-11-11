@@ -195,7 +195,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     /** Bumped when something the settings show changed (pairing, battery, saved data). */
     private var settingsTick by mutableStateOf(0)
     /** "Cartella di salvataggio" is open over the settings. */
-    private var folderDialog by mutableStateOf(false)
+    private var folderOpen by mutableStateOf(false)
     private var savedDataBytes = 0L
     /** The battery screen is shown; its two buttons run this afterwards. */
     private var batteryThen by mutableStateOf<(() -> Unit)?>(null)
@@ -500,6 +500,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         if (uploadsOpen) {
             uploadsOpen = false
+            return
+        }
+        if (folderOpen) {
+            folderOpen = false
+            settingsTick++
             return
         }
         if (settingsOpen) {
@@ -827,6 +832,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             Layer(settingsOpen) {
                 androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
                     SettingsScreen(settingsGroups(settingsTick, keepAwakeState), onBack = { settingsOpen = false; onChanged() })
+                }
+            }
+            Layer(folderOpen) {
+                androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background).blockTouches()) {
+                    SaveFolderScreen(onBack = { folderOpen = false; settingsTick++ })
                 }
             }
             Layer(batteryThen != null) {
@@ -2351,10 +2361,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         if (b.cancelled) return
         val sec = (b.millis / 1000).coerceAtLeast(1)
-        val raw = b.saved.any { kindOf(it) == Kind.RAW }
-        val folder = SaveFolder.get(this)
-        val where = SaveFolder.path(folder)
-            ?: if (raw) getString(R.string.where_raw, folder.name) else getString(R.string.where_gallery, folder.name)
+        val where = SaveFolder.describeFor(this, b.saved.map { it.filename })
         val s = ImmichSync.settings(this)
         val base = DoneUi(
             id = b.id, saved = b.saved, batchSize = b.saved.size + b.left.size, failed = b.failed,
@@ -2372,7 +2379,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         if (!wasVisible || b.saved.isEmpty()) {
             if (b.saved.isNotEmpty() && b.failed == 0) {
-                android.widget.Toast.makeText(this, getString(R.string.st_done, b.saved.size) + "\n" + getString(R.string.notif_where, SaveFolder.describe(this)),
+                android.widget.Toast.makeText(this, getString(R.string.st_done, b.saved.size) + "\n" + getString(R.string.notif_where, SaveFolder.describeFor(this, b.saved.map { it.filename })),
                     android.widget.Toast.LENGTH_LONG).show()
             }
             return
@@ -2523,17 +2530,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     @Composable
     private fun AppDialogs() {
-        if (folderDialog) {
-            SaveFolderDialog(
-                initial = SaveFolder.get(this),
-                onSave = {
-                    SaveFolder.set(this, it)
-                    folderDialog = false
-                    settingsTick++
-                },
-                onDismiss = { folderDialog = false },
-            )
-        }
         when (val d = appDialog) {
             null -> {}
             is AppDialog.Confirm -> androidx.compose.material3.AlertDialog(
@@ -2736,7 +2732,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             )),
             SettingGroup(getString(R.string.download_title), listOf(
                 SettingRow(R.drawable.ic_sun, getString(R.string.keep_awake), getString(R.string.keep_awake_sub), switch = awake, onSwitch = { setKeepAwake(it) }),
-                SettingRow(R.drawable.ic_folder, getString(R.string.set_folder), SaveFolder.describe(this), onClick = { folderDialog = true }),
+                SettingRow(R.drawable.ic_folder, getString(R.string.set_folder), if (SaveFolder.isSplit(this)) getString(R.string.folder_split_sub) else SaveFolder.describe(this),
+                    onClick = { folderOpen = true }),
             )),
             SettingGroup(getString(R.string.set_battery), listOf(
                 SettingRow(

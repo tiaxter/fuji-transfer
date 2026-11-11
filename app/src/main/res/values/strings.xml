@@ -656,8 +656,6 @@
     <string name="waiting">Waiting</string>
     <string name="was_there">Already there</string>
     <string name="what_happened">What happened</string>
-    <string name="where_gallery">Gallery › %1$s</string>
-    <string name="where_raw">photos in %1$s, RAW in Download/%1$s</string>
     <string name="wifi_joined">Wi-Fi joined</string>
     <string name="wifi_not_joined">Wi-Fi not joined</string>
     <string name="wifi_starting">Wi-Fi starting</string>
@@ -670,16 +668,16 @@
     <string name="yesterday_at">Yesterday, %1$s</string>
     <string name="zoom_in">Zoom in</string>
     <string name="zoom_out">Zoom out</string>
-    <string name="save">Save</string>
-    <string name="folder_pictures">Pictures</string>
-    <string name="folder_pictures_sub">Photos, RAW and videos together</string>
-    <string name="folder_dcim">DCIM</string>
-    <string name="folder_dcim_sub">Together, next to the phone camera\'s photos</string>
-    <string name="folder_download">Download</string>
-    <string name="folder_download_sub">Together; some gallery apps don\'t show it</string>
-    <string name="folder_split">By file type</string>
-    <string name="folder_split_sub">Photos in Pictures, videos in Movies, RAW in Download</string>
-    <string name="folder_split_desc">photos in Pictures/%1$s, videos in Movies/%1$s, RAW in Download/%1$s</string>
-    <string name="folder_name">Folder name</string>
-    <string name="folder_note">Files already downloaded stay where they are. If Android doesn\'t accept a file in the chosen folder, it goes to the folder for its type.</string>
+    <string name="folder_split_title">Separate folders by type</string>
+    <string name="folder_split_sub">Photos, RAW and videos in three folders</string>
+    <string name="folder_split_desc">photos in %1$s, RAW in %2$s, videos in %3$s</string>
+    <string name="folder_group_all">All files</string>
+    <string name="folder_group_kind">By type</string>
+    <string name="folder_all">Photos, RAW and videos</string>
+    <string name="folder_photo">Photos (JPG, HEIF)</string>
+    <string name="folder_raw">RAW (RAF)</string>
+    <string name="folder_video">Videos (MOV, MP4)</string>
+    <string name="folder_base">Main folder</string>
+    <string name="folder_name">Subfolder</string>
+    <string name="folder_note">Files already downloaded stay where they are. Android only accepts each type of file in some main folders: if it refuses a file anyway, the file goes to the default folder for its type.</string>
 </resources>

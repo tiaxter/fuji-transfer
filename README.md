@@ -23,7 +23,7 @@ reconnection and resuming of interrupted downloads.
   - `UsbCamera`: PTP over USB bulk (Still Image class interface).
   - `Thumbs`: thumbnail cache (memory + files), requested by the grid and fetched by the service between downloads.
   - `MainActivity`: connection, thumbnail grid, filters, selection, progress.
-  - Saving: by default photos (JPG/HEIF), RAF and videos all go into `Pictures/Fujifilm`. Settings › Save folder picks the base (`Pictures`, `DCIM`, `Download`, or one folder per type: `Pictures`/`Movies`/`Download`) and the folder name; a file Android refuses in the chosen folder falls back to the folder for its type.
+  - Saving: by default photos (JPG/HEIF), RAF and videos all go into `Pictures/Fujifilm`. Settings › Save folder sets that path (main folder + subfolder), or, with "Separate folders by type", one path each for photos, RAW and videos. Each type only offers the main folders Android accepts for it (photos: Pictures, DCIM; RAW: Pictures, DCIM, Download; videos: Movies, DCIM, Pictures from Android 11); a file Android refuses anyway falls back to the default folder for its type.
 
 ## Build
 

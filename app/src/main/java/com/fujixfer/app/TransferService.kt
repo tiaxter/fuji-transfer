@@ -1699,9 +1699,7 @@ class TransferService : Service() {
      * this kind of file (a video in Pictures on Android 10, say) falls back to the folder for its type.
      */
     private fun insertItem(info: ObjectInfo): android.net.Uri {
-        val chosen = SaveFolder.target(this, info.filename)
-        val fallback = SaveFolder.split(info.filename, SaveFolder.get(this).name)
-        for (t in listOf(chosen, fallback).distinct()) {
+        for (t in SaveFolder.targets(this, info.filename)) {
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, info.filename)
                 put(MediaStore.MediaColumns.MIME_TYPE, t.mime)

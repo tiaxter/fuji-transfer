@@ -402,7 +402,7 @@ internal fun ModeRow(title: String, sub: String, on: Boolean, first: Boolean, la
 }
 
 @Composable
-private fun KindChip(label: String, on: Boolean, onClick: () -> Unit) {
+internal fun KindChip(label: String, on: Boolean, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val shape = RoundedCornerShape(if (on) 18.dp else 10.dp)
     Row(

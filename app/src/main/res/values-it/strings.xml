@@ -686,8 +686,6 @@
     <string name="waiting">In attesa</string>
     <string name="was_there">C\'era già</string>
     <string name="what_happened">Cosa è successo</string>
-    <string name="where_gallery">Galleria › %1$s</string>
-    <string name="where_raw">foto in %1$s, RAW in Download/%1$s</string>
     <string name="wifi_joined">Wi-Fi collegato</string>
     <string name="wifi_not_joined">Wi-Fi non collegato</string>
     <string name="wifi_starting">Wi-Fi in avvio</string>
@@ -700,16 +698,16 @@
     <string name="yesterday_at">Ieri, %1$s</string>
     <string name="zoom_in">Ingrandisci</string>
     <string name="zoom_out">Riduci</string>
-    <string name="save">Salva</string>
-    <string name="folder_pictures">Pictures</string>
-    <string name="folder_pictures_sub">Foto, RAW e video insieme</string>
-    <string name="folder_dcim">DCIM</string>
-    <string name="folder_dcim_sub">Insieme, accanto alle foto della fotocamera del telefono</string>
-    <string name="folder_download">Download</string>
-    <string name="folder_download_sub">Insieme; alcune app galleria non la mostrano</string>
-    <string name="folder_split">Per tipo di file</string>
-    <string name="folder_split_sub">Foto in Pictures, video in Movies, RAW in Download</string>
-    <string name="folder_split_desc">foto in Pictures/%1$s, video in Movies/%1$s, RAW in Download/%1$s</string>
-    <string name="folder_name">Nome della cartella</string>
-    <string name="folder_note">I file già scaricati restano dove sono. Se Android non accetta un file nella cartella scelta, va nella cartella del suo tipo.</string>
+    <string name="folder_split_title">Cartelle separate per tipo</string>
+    <string name="folder_split_sub">Foto, RAW e video in tre cartelle</string>
+    <string name="folder_split_desc">foto in %1$s, RAW in %2$s, video in %3$s</string>
+    <string name="folder_group_all">Tutti i file</string>
+    <string name="folder_group_kind">Per tipo</string>
+    <string name="folder_all">Foto, RAW e video</string>
+    <string name="folder_photo">Foto (JPG, HEIF)</string>
+    <string name="folder_raw">RAW (RAF)</string>
+    <string name="folder_video">Video (MOV, MP4)</string>
+    <string name="folder_base">Cartella principale</string>
+    <string name="folder_name">Sottocartella</string>
+    <string name="folder_note">I file già scaricati restano dove sono. Android accetta ogni tipo di file solo in alcune cartelle principali: se rifiuta comunque un file, va nella cartella predefinita del suo tipo.</string>
 </resources>

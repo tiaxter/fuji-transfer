@@ -18,11 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -30,6 +28,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -435,49 +434,102 @@ fun VideoErrorPanel(what: String, why: String, onRetry: () -> Unit, onDownload: 
 // ------------------------------------------------------------------ save folder
 
 /**
- * "Cartella di salvataggio": where downloaded files go (Pictures, DCIM, Download or one folder per type) and
- * the folder's name. Files already on the phone stay where they are.
+ * "Cartella di salvataggio": one path for all files or, with "Cartelle separate per tipo", one for photos, RAW
+ * and videos. Each path is edited in place (top-level folder as chips, subfolder as text) and saved at once.
  */
 @Composable
-fun SaveFolderDialog(initial: SaveFolder.Choice, onSave: (SaveFolder.Choice) -> Unit, onDismiss: () -> Unit) {
+fun SaveFolderScreen(onBack: () -> Unit) {
+    val ctx = LocalContext.current
     val c = MaterialTheme.colorScheme
-    var base by remember { mutableStateOf(initial.base) }
-    var name by remember { mutableStateOf(initial.name) }
-    val cleaned = SaveFolder.clean(name)
-    val choices = listOf(
-        Triple(SaveFolder.BASE_PICTURES, stringResource(R.string.folder_pictures), stringResource(R.string.folder_pictures_sub)),
-        Triple(SaveFolder.BASE_DCIM, stringResource(R.string.folder_dcim), stringResource(R.string.folder_dcim_sub)),
-        Triple(SaveFolder.BASE_DOWNLOAD, stringResource(R.string.folder_download), stringResource(R.string.folder_download_sub)),
-        Triple(SaveFolder.BASE_SPLIT, stringResource(R.string.folder_split), stringResource(R.string.folder_split_sub)),
-    )
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.set_folder)) },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    choices.forEachIndexed { i, (key, title, sub) ->
-                        ModeRow(title, sub, base == key, i == 0, i == choices.size - 1) { base = key }
-                    }
-                }
-                OutlinedTextField(
-                    value = name, onValueChange = { name = it },
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    label = { Text(stringResource(R.string.folder_name)) },
-                    supportingText = {
-                        Text(SaveFolder.describe(LocalContext.current, SaveFolder.Choice(base, cleaned)))
+    var split by remember { mutableStateOf(SaveFolder.isSplit(ctx)) }
+    val kinds = if (split) {
+        listOf(
+            Triple(SaveFolder.Kind.PHOTO, R.drawable.ic_photos, stringResource(R.string.folder_photo)),
+            Triple(SaveFolder.Kind.RAW, R.drawable.ic_camera, stringResource(R.string.folder_raw)),
+            Triple(SaveFolder.Kind.VIDEO, R.drawable.ic_play, stringResource(R.string.folder_video)),
+        )
+    } else {
+        listOf(Triple(SaveFolder.Kind.ALL, R.drawable.ic_folder, stringResource(R.string.folder_all)))
+    }
+    Column(Modifier.fillMaxSize()) {
+        ScreenBar(stringResource(R.string.set_folder), onBack)
+        Column(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SettingsRowView(
+                SettingRow(
+                    R.drawable.ic_folder, stringResource(R.string.folder_split_title), stringResource(R.string.folder_split_sub),
+                    switch = split, onSwitch = {
+                        SaveFolder.setSplit(ctx, it)
+                        split = it
                     },
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = c.outline),
-                )
+                ),
+                groupShape(0, 1),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    stringResource(R.string.folder_note), Modifier.padding(top = 8.dp),
-                    color = c.onSurfaceVariant, style = type(13, 18),
+                    stringResource(if (split) R.string.folder_group_kind else R.string.folder_group_all),
+                    Modifier.padding(start = 4.dp, bottom = 4.dp), color = c.primary, style = type(14, 20, medium = true),
                 )
+                kinds.forEachIndexed { i, (kind, icon, title) ->
+                    // keyed by kind and switch: turning the switch on may have just filled the three paths
+                    key(kind, split) { PathCard(kind, icon, title, groupShape(i, kinds.size)) }
+                }
             }
-        },
-        confirmButton = { TextButton(onClick = { onSave(SaveFolder.Choice(base, cleaned)) }) { Text(stringResource(R.string.save)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
-    )
+            Text(stringResource(R.string.folder_note), Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(13, 18))
+        }
+    }
+}
+
+/** One path: icon, kind and the resulting folder; the top-level folders it may use; the subfolder. */
+@Composable
+private fun PathCard(kind: SaveFolder.Kind, icon: Int, title: String, shape: RoundedCornerShape) {
+    val ctx = LocalContext.current
+    val c = MaterialTheme.colorScheme
+    val start = remember { SaveFolder.path(ctx, kind) }
+    var base by remember { mutableStateOf(start.base) }
+    var name by remember { mutableStateOf(start.name) }
+    val save = { SaveFolder.setPath(ctx, kind, SaveFolder.Path(base, name)) }
+    val order = listOf(SaveFolder.PICTURES, SaveFolder.DCIM, SaveFolder.MOVIES, SaveFolder.DOWNLOAD)
+    val bases = SaveFolder.bases(kind).sortedBy { order.indexOf(it) }
+    Column(
+        Modifier.fillMaxWidth().clip(shape).background(c.surfaceContainer)
+            .padding(start = 14.dp, top = 12.dp, end = 14.dp, bottom = 14.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(40.dp).clip(CircleShape).background(c.secondaryContainer), contentAlignment = Alignment.Center) {
+                Icon(painterResource(icon), null, Modifier.size(20.dp), tint = c.onSecondaryContainer)
+            }
+            Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                Text(title, color = c.onSurface, style = type(16, 22))
+                Text(SaveFolder.Path(base, SaveFolder.clean(name)).toString(), color = c.onSurfaceVariant, style = type(13, 18))
+            }
+        }
+        Text(
+            stringResource(R.string.folder_base), Modifier.padding(start = 4.dp, top = 14.dp, bottom = 6.dp),
+            color = c.onSurfaceVariant, style = type(13, 18),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            bases.forEach { b ->
+                KindChip(b, base == b) {
+                    base = b
+                    save()
+                }
+            }
+        }
+        OutlinedTextField(
+            value = name, onValueChange = {
+                name = it
+                save()
+            },
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            label = { Text(stringResource(R.string.folder_name)) },
+            singleLine = true,
+            shape = RoundedCornerShape(16.dp),
+            textStyle = type(16, 24),
+            colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = c.outline),
+        )
+    }
 }
