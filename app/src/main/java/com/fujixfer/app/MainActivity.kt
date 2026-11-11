@@ -2649,7 +2649,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         requestPermissions(missing.toTypedArray(), 2)
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         permTick++
         settingsTick++
