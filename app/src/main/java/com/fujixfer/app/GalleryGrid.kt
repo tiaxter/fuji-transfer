@@ -17,6 +17,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -105,6 +106,8 @@ class TileUi(
     /** A pulsing cell until the picture arrives. */
     val loading: Boolean,
     val description: String,
+    /** Ask for the thumbnail without the pulse (offline: only the copies already on disk can come). */
+    val want: Boolean = false,
 )
 
 class GridActions(
@@ -249,15 +252,14 @@ private fun HeaderRow(r: GridRow.Header, a: GridActions, tick: Int) {
         Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, top = 8.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            buildAnnotatedString {
-                append(r.title)
-                append("  ")
-                withStyle(SpanStyle(color = c.onSurfaceVariant, fontWeight = FontWeight.Normal)) { append(r.sub) }
-            },
-            Modifier.weight(1f), color = c.onSurface, style = type(14, 20, medium = true),
-        )
-        FujiButton(if (all) "Deseleziona" else "Seleziona tutte", { a.onHeader(r) }, kind = ButtonKind.Text, height = 40.dp)
+        // the day on one line, what it holds on a second one
+        Column(Modifier.weight(1f)) {
+            Text(r.title, color = c.onSurface, style = type(16, 22, medium = true), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (r.sub.isNotEmpty()) {
+                Text(r.sub, color = c.onSurfaceVariant, style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        FujiButton(if (all) "Deseleziona" else "Seleziona tutte", { a.onHeader(r) }, kind = ButtonKind.Text, height = 48.dp)
     }
 }
 
@@ -316,7 +318,7 @@ private fun Tile(
             a.onTileCoords(info.handle, null)
         }
     }
-    LaunchedEffect(info, ui.loading, tick) { if (ui.loading) a.onRequest(info) }
+    LaunchedEffect(info, ui.loading, ui.want, tick) { if (ui.loading || ui.want) a.onRequest(info) }
     CountWhileLoading(ui.loading, loadingCount)
 
     Box(
@@ -350,7 +352,9 @@ private fun Tile(
             val bmp = remember(ui.bitmap) { ui.bitmap?.asImageBitmap() }
             val fade by animateFloatAsState(if (bmp != null) 1f else 0f, tween(180), label = "fade")
             if (bmp != null) {
-                Image(bmp, null, Modifier.fillMaxSize().graphicsLayer { alpha = fade }, contentScale = ContentScale.Crop)
+                // already on the phone: a little quieter than the ones still to fetch
+                val quiet = if (ui.done && !ui.selected) 0.72f else 1f
+                Image(bmp, null, Modifier.fillMaxSize().graphicsLayer { alpha = fade * quiet }, contentScale = ContentScale.Crop)
             }
         }
 

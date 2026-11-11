@@ -47,6 +47,20 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import kotlinx.coroutines.delay
 
 // ------------------------------------------------------------------ connect
 
@@ -61,9 +75,16 @@ data class ConnectUi(
     val paired: Boolean = false,
     /** What the app knows of the camera's Wi-Fi link right now ("Wi-Fi non collegato", "Wi-Fi in avvio", ...). */
     val wifiTag: String = "",
+    /** The app's own link to the camera's Wi-Fi is up (the dot beside [wifiTag] is green). */
+    val wifiOn: Boolean = false,
     /** The "Backup" card: Immich set up or not, and what it does ("Carichi tu dalla galleria · 3 in coda"). */
     val backupLinked: Boolean = false,
     val backupSub: String = "",
+    /** "Ultima sessione": when ("Ieri, 18:42") and what came of it; empty = no session yet. */
+    val lastWhen: String = "",
+    val lastText: String = "",
+    /** Files of the listing saved at the last connection: "Apri la galleria salvata" (0 = none saved). */
+    val cachedCount: Int = 0,
     val manualOpen: Boolean = false,
     val usbStatus: String = "Nessuna camera collegata",
 )
@@ -79,6 +100,7 @@ class ConnectActions(
     val onLog: () -> Unit,
     val onShareLog: () -> Unit,
     val onImmich: () -> Unit,
+    val onSavedGallery: () -> Unit = {},
 )
 
 @Composable
@@ -93,11 +115,18 @@ fun ConnectScreen(
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().height(64.dp).padding(start = 16.dp, end = 4.dp),
+            Modifier.fillMaxWidth().height(64.dp).padding(start = 16.dp, top = 4.dp, end = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Fuji Transfer", Modifier.weight(1f), color = c.onSurface, style = type(22, 28, medium = true))
-            FujiButton("Registro", a.onLog, kind = ButtonKind.Tonal, height = 40.dp, icon = R.drawable.ic_log)
+            Text("Fuji Transfer", Modifier.weight(1f), color = c.onSurface, style = type(24, 32, medium = true))
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).background(c.surfaceContainerHighest)
+                    .clickable(role = Role.Button, onClick = a.onLog)
+                    .semantics { contentDescription = "Registro tecnico" },
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(R.drawable.ic_log), null, Modifier.size(24.dp), tint = c.onSurface)
+            }
         }
 
         Column(
@@ -109,23 +138,18 @@ fun ConnectScreen(
         }
 
         // footer
-        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+        Column(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp)) {
             FujiButton(
-                if (ui.useWifi) "Connetti alla camera" else "Connetti via USB", a.onConnect, Modifier.fillMaxWidth(),
-                kind = ButtonKind.Filled, enabled = ui.canConnect,
+                if (ui.useWifi) "Connetti" else "Connetti via USB", a.onConnect, Modifier.fillMaxWidth(),
+                kind = ButtonKind.Filled, enabled = ui.canConnect, height = 64.dp,
                 icon = if (ui.useWifi) R.drawable.ic_wifi else R.drawable.ic_usb,
             )
             if (ui.useWifi) {
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.Center) {
-                    FujiButton("Abbina nuova camera", a.onRepair, kind = ButtonKind.Text, enabled = ui.canConnect)
-                    FujiButton(if (ui.manualOpen) "Chiudi manuale" else "Connessione manuale", a.onManualToggle, kind = ButtonKind.Text)
-                }
-            }
-            if (ui.paired && ui.useWifi) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    FujiButton("Abbina nuova camera", a.onRepair, Modifier.weight(1f), kind = ButtonKind.Text, enabled = ui.canConnect)
                     FujiButton(
-                        "Dimentica camera", a.onForget, kind = ButtonKind.Text, enabled = ui.canConnect,
-                        height = 40.dp, contentColor = c.onSurfaceVariant,
+                        if (ui.manualOpen) "Chiudi manuale" else "Connessione manuale", a.onManualToggle, Modifier.weight(1f),
+                        kind = ButtonKind.Text,
                     )
                 }
             }
@@ -175,18 +199,18 @@ private fun SegButton(text: String, selected: Boolean, enabled: Boolean, first: 
     }
 }
 
+/** The camera's circle (88 dp), with a small round badge on its lower right edge, ringed with the card colour. */
 @Composable
 private fun HeroCircle(icon: Int, badge: Int? = null) {
     val c = MaterialTheme.colorScheme
-    Box(Modifier.size(104.dp)) {
-        Box(Modifier.fillMaxSize().clip(CircleShape).background(c.primaryContainer).padding(26.dp)) {
+    Box(Modifier.size(96.dp)) {
+        Box(Modifier.size(88.dp).clip(CircleShape).background(c.primaryContainer).padding(24.dp)) {
             Icon(painterResource(icon), null, Modifier.fillMaxSize(), tint = c.onPrimaryContainer)
         }
         if (badge != null) {
-            // small round badge on the lower right edge, ringed with the card colour
             Box(
-                Modifier.align(Alignment.BottomEnd).size(34.dp).clip(CircleShape).background(c.surfaceContainer).padding(3.dp)
-                    .clip(CircleShape).background(c.tertiary).padding(6.dp),
+                Modifier.align(Alignment.BottomEnd).size(36.dp).clip(CircleShape).background(c.surfaceContainer).padding(3.dp)
+                    .clip(CircleShape).background(c.tertiary).padding(7.dp),
             ) {
                 Icon(painterResource(badge), null, Modifier.fillMaxSize(), tint = c.onTertiary)
             }
@@ -194,65 +218,97 @@ private fun HeroCircle(icon: Int, badge: Int? = null) {
     }
 }
 
-/** Status chip of the camera card: tonal (pairing) or outlined (Wi-Fi link). */
-@Composable
-private fun StatusChip(icon: Int, text: String, filled: Boolean) {
-    val c = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(8.dp)
-    val content = if (filled) c.onSecondaryContainer else c.onSurfaceVariant
-    Row(
-        Modifier.height(32.dp).clip(shape)
-            .then(if (filled) Modifier.background(c.secondaryContainer) else Modifier.border(1.dp, c.outlineVariant, shape))
-            .padding(start = 8.dp, end = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(painterResource(icon), null, Modifier.size(18.dp), tint = content)
-        Text(text, Modifier.padding(start = 6.dp), color = content, style = type(14, 20, medium = true), maxLines = 1)
-    }
-}
-
 @Composable
 private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass: String, onPass: (String) -> Unit, a: ConnectActions) {
     val c = MaterialTheme.colorScheme
+    var howOpen by rememberSaveable { mutableStateOf(false) }
+    // the camera: circle, name, pairing chip and what the app knows of its Wi-Fi
     Column(
         Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
-            .padding(start = 24.dp, top = 28.dp, end = 24.dp, bottom = 24.dp),
+            .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         HeroCircle(R.drawable.ic_camera, badge = if (ui.paired) R.drawable.ic_bluetooth else null)
         Text(
-            "Camera", Modifier.padding(top = 16.dp), color = c.onSurfaceVariant,
-            style = type(12, 16, medium = true).copy(letterSpacing = 0.04.em),
+            "Camera", Modifier.padding(top = 10.dp), color = c.onSurfaceVariant,
+            style = type(12, 16).copy(letterSpacing = 0.06.em),
         )
-        Text(ui.cameraName, color = c.onSurface, textAlign = TextAlign.Center, style = TextStyle(fontSize = 32.sp, lineHeight = 40.sp))
-        // pairing (tonal) and Wi-Fi link (outlined), side by side as in the design
-        Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusChip(R.drawable.ic_bluetooth, ui.pairTag, filled = true)
-            if (ui.wifiTag.isNotEmpty()) StatusChip(R.drawable.ic_wifi, ui.wifiTag, filled = false)
+        Text(ui.cameraName, color = c.onSurface, textAlign = TextAlign.Center, style = type(32, 40, medium = true))
+        Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.height(32.dp).clip(RoundedCornerShape(16.dp)).background(c.secondaryContainer).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(R.drawable.ic_bluetooth), null, Modifier.size(16.dp), tint = c.onSecondaryContainer)
+                Text(ui.pairTag, Modifier.padding(start = 6.dp), color = c.onSecondaryContainer, style = type(14, 20, medium = true), maxLines = 1)
+            }
+            if (ui.wifiTag.isNotEmpty()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).clip(CircleShape).background(if (ui.wifiOn) c.primary else c.outline))
+                    Text(ui.wifiTag, Modifier.padding(start = 6.dp), color = c.onSurfaceVariant, style = type(14, 20), maxLines = 1)
+                }
+            }
         }
         if (ui.hint.isNotEmpty()) {
             Text(ui.hint, Modifier.padding(top = 12.dp), color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(14, 20))
         }
     }
 
-    Text(
-        "Backup", Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp),
-        color = c.primary, style = type(14, 20, medium = true),
-    )
-    BackupCard(ui.backupLinked, ui.backupSub, a.onImmich)
+    // what the last connection left: files downloaded, still for Immich, and the saved list to browse offline
+    if (ui.lastWhen.isNotEmpty() || ui.cachedCount > 0) {
+        Column(
+            Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
+                .padding(start = 20.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Ultima sessione", Modifier.weight(1f), color = c.primary, style = type(14, 20, medium = true))
+                if (ui.lastWhen.isNotEmpty()) Text(ui.lastWhen, color = c.onSurfaceVariant, style = type(13, 18))
+            }
+            if (ui.lastText.isNotEmpty()) {
+                Text(ui.lastText, Modifier.padding(top = 4.dp), color = c.onSurface, style = type(16, 24))
+            }
+            if (ui.cachedCount > 0) {
+                FujiButton(
+                    "Apri la galleria salvata · ${java.text.NumberFormat.getIntegerInstance().format(ui.cachedCount)} file", a.onSavedGallery,
+                    Modifier.padding(top = 12.dp).fillMaxWidth(), kind = ButtonKind.Tonal, icon = R.drawable.ic_photos,
+                )
+            }
+        }
+    }
 
-    Text(
-        "Come funziona", Modifier.padding(start = 4.dp, top = 20.dp, bottom = 4.dp),
-        color = c.primary, style = type(14, 20, medium = true),
-    )
-    HowStep(1, "Trova la camera via Bluetooth", "Anche se è già abbinata a XApp")
-    HowStep(2, "Le fa accendere il Wi‑Fi", "Nome e password arrivano da soli")
-    HowStep(3, "Scegli le foto e scaricale", "Se il segnale cade, riprende da dove era")
+    Box(Modifier.padding(top = 12.dp)) { BackupCard(ui.backupLinked, ui.backupSub, a.onImmich) }
+
+    // "Come funziona": folded away, the steps behind a chevron
+    val turn by animateFloatAsState(if (howOpen) 180f else 0f, tween(200), label = "chevron")
+    Row(
+        Modifier.padding(top = 4.dp).height(48.dp).clip(RoundedCornerShape(24.dp))
+            .clickable(role = Role.Button, onClick = { howOpen = !howOpen }).padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("Come funziona", color = c.primary, style = type(14, 20, medium = true))
+        Icon(
+            painterResource(R.drawable.ic_chevron_down), null,
+            Modifier.padding(start = 4.dp).size(20.dp).graphicsLayer { rotationZ = turn }, tint = c.primary,
+        )
+    }
+    if (howOpen) {
+        Column(Modifier.animateContentSize()) {
+            HowStep(1, "Trova la camera via Bluetooth", "Anche se è già abbinata a XApp")
+            HowStep(2, "Le fa accendere il Wi‑Fi", "Nome e password arrivano da soli")
+            HowStep(3, "Scegli le foto e scaricale", "Se il segnale cade, riprende da dove era")
+            if (ui.paired) {
+                FujiButton(
+                    "Dimentica la camera abbinata", a.onForget, kind = ButtonKind.Text, enabled = ui.canConnect,
+                    height = 40.dp, contentColor = c.onSurfaceVariant,
+                )
+            }
+        }
+    }
 
     // manual connection (Wi-Fi started from the camera menu)
     if (ui.manualOpen) {
         Column(
-            Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(c.surfaceContainer).padding(16.dp),
+            Modifier.padding(top = 4.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer).padding(16.dp),
         ) {
             Text("Connessione manuale", Modifier.padding(bottom = 4.dp), color = c.primary, style = type(14, 20, medium = true))
             Text(
@@ -348,23 +404,70 @@ private fun UsbBody(ui: ConnectUi) {
 
 data class ConnectingUi(
     val usb: Boolean = false,
-    /** 0 looking for the camera, 1 pairing recognised, 2 camera Wi-Fi, 3 session and list. */
+    /** 0 Bluetooth and pairing, 1 the camera's Wi-Fi, 2 the phone joins it, 3 list of the photos. */
     val step: Int = 0,
     val title: String = "",
-    val detail: String = "",
     val icon: Int = R.drawable.ic_bluetooth,
+    /** When this attempt started (wall clock, ms): the screen counts the seconds from here. 0 = unknown. */
+    val startedAt: Long = 0,
+    /** When the step in progress started. */
+    val stepStartedAt: Long = 0,
+    /** How long each step took in this attempt (ms), null = not done or skipped. */
+    val took: List<Long?> = listOf(null, null, null, null),
+    /** How long each step usually takes on this phone (ms, from the last connections), null = not known yet. */
+    val typical: List<Long?> = listOf(null, null, null, null),
+    /** "di solito 25–30 s in tutto" from the last connections, "" = not known yet. */
+    val typicalTotal: String = "",
+    /** Longest total of the last connections (ms): the bar fills towards it. 0 = not known: the bar only sweeps. */
+    val typicalMax: Long = 0,
+    /** The elenco delle foto checks against a saved one. */
+    val hasCache: Boolean = false,
+    /** Files of the saved listing: "Sfoglia intanto la galleria salvata" (0 = none). */
+    val cachedCount: Int = 0,
 )
 
 private val connectSteps = listOf(
-    "Cerca la camera via Bluetooth" to "Anche se è abbinata a XApp",
-    "Abbinamento riconosciuto" to "Lo stesso di XApp, senza rifarlo",
-    "Wi-Fi della camera" to "Se Android chiede di collegarsi alla camera, accetta",
-    "Elenco delle foto" to "",
+    "Bluetooth e abbinamento",
+    "Wi-Fi della camera",
+    "Collegamento alla rete",
+    "Elenco delle foto",
 )
 
+private fun stepSub(k: Int, step: Int, hasCache: Boolean): String = when (k) {
+    0 -> if (k < step) "Camera trovata, abbinamento riconosciuto" else "Cerco la camera, anche se è abbinata a XApp"
+    1 -> if (k < step) "La camera ha acceso il suo Wi-Fi" else "Chiedo alla camera di accendere il suo Wi-Fi"
+    2 -> if (k < step) "Telefono collegato alla camera" else "Android si collega alla camera"
+    else -> if (hasCache) "Solo le novità rispetto all'elenco salvato" else "Leggo cosa c'è sulla scheda"
+}
+
+/** "5,6 s", "12 s", "1 min 4 s". */
+internal fun seconds(ms: Long, decimals: Boolean = false): String {
+    val s = ms / 1000.0
+    return when {
+        s >= 60 -> "${(s / 60).toInt()} min ${(s % 60).toInt()} s"
+        decimals && s < 10 -> String.format(java.util.Locale.ITALY, "%.1f s", s)
+        else -> "${s.toInt()} s"
+    }
+}
+
+/** The wall clock, ticking every half second while shown (for the "12 s trascorsi" counters). */
 @Composable
-fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit) {
+internal fun tickingNow(): Long {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(500)
+        }
+    }
+    return now
+}
+
+@Composable
+fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit, onBrowse: () -> Unit = {}) {
     val c = MaterialTheme.colorScheme
+    val now = tickingNow()
+    val step = ui.step.coerceIn(0, 3)
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 16.dp),
@@ -377,59 +480,106 @@ fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit) {
         }
 
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
-                .padding(start = 16.dp, top = 24.dp, end = 16.dp),
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Box(Modifier.size(176.dp), contentAlignment = Alignment.Center) {
+            // the wavy ring around the circle of what is being done
+            Box(Modifier.size(128.dp), contentAlignment = Alignment.Center) {
                 WavyBar(0, 100, c.primary, c.secondaryContainer, Modifier.fillMaxSize(), indeterminate = true)
-                Box(Modifier.size(128.dp).clip(CircleShape).background(c.primaryContainer).padding(36.dp)) {
+                Box(Modifier.size(88.dp).clip(CircleShape).background(c.primaryContainer).padding(24.dp)) {
                     Icon(painterResource(ui.icon), null, Modifier.fillMaxSize(), tint = c.onPrimaryContainer)
                 }
             }
-            Text(ui.title, Modifier.padding(top = 24.dp), color = c.onSurface, textAlign = TextAlign.Center, style = type(24, 30))
-            Text(
-                ui.detail, Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp),
-                color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(14, 20),
-            )
+            Text(ui.title, Modifier.padding(top = 12.dp), color = c.onSurface, textAlign = TextAlign.Center, style = type(24, 32, medium = true))
+            if (!ui.usb) {
+                val usual = ui.typical.getOrNull(step)?.let { " · di solito circa ${seconds(it)}" } ?: ""
+                Text(
+                    "Passo ${step + 1} di 4$usual", Modifier.padding(top = 2.dp),
+                    color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(14, 20),
+                )
+            }
+
+            // seconds so far, against what the last connections took
+            if (ui.startedAt > 0) {
+                val elapsed = (now - ui.startedAt).coerceAtLeast(0)
+                Column(Modifier.padding(top = 14.dp).fillMaxWidth()) {
+                    Row(Modifier.fillMaxWidth()) {
+                        Text("${seconds(elapsed)} trascorsi", Modifier.weight(1f), color = c.onSurface, style = type(13, 18, medium = true))
+                        if (ui.typicalTotal.isNotEmpty()) Text(ui.typicalTotal, color = c.onSurfaceVariant, style = type(13, 18))
+                    }
+                    val known = ui.typicalMax > 0
+                    WavyBar(
+                        if (known) (elapsed * 1000 / ui.typicalMax).toInt().coerceIn(0, 950) else 0, 1000,
+                        c.primary, c.secondaryContainer, Modifier.padding(top = 6.dp).fillMaxWidth().height(16.dp),
+                        indeterminate = !known,
+                    )
+                }
+            }
+
             if (!ui.usb) {
                 Column(
-                    Modifier.padding(top = 24.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
-                        .animateContentSize().padding(vertical = 8.dp),
+                    Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
+                        .animateContentSize().padding(horizontal = 16.dp, vertical = 10.dp),
                 ) {
-                    val step = ui.step.coerceIn(0, 3)
-                    connectSteps.forEachIndexed { k, (title, sub) -> StepRow(k, step, title, sub) }
+                    connectSteps.forEachIndexed { k, title ->
+                        val time = when {
+                            k < step -> ui.took.getOrNull(k)?.let { seconds(it, decimals = true) } ?: ""
+                            k == step -> ui.typical.getOrNull(k)?.let { "~${seconds(it)}" }
+                                ?: if (ui.stepStartedAt > 0) seconds((now - ui.stepStartedAt).coerceAtLeast(0)) else ""
+                            else -> ui.typical.getOrNull(k)?.let { "~${seconds(it)}" } ?: ""
+                        }
+                        StepRow(k, step, title, stepSub(k, step, ui.hasCache), time)
+                    }
+                }
+                // Android's own dialog for the camera's network is the one thing the user has to do
+                Row(
+                    Modifier.padding(top = 12.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(c.tertiaryContainer)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    Icon(painterResource(R.drawable.ic_info), null, Modifier.padding(top = 1.dp).size(22.dp), tint = c.onTertiaryContainer)
+                    Text(
+                        buildAnnotatedString {
+                            append("Se Android chiede di collegarsi alla rete della camera, tocca ")
+                            withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append("Connetti") }
+                            append(".")
+                        },
+                        Modifier.padding(start = 12.dp), color = c.onTertiaryContainer, style = type(14, 20),
+                    )
                 }
             }
         }
 
-        FujiButton("Annulla", onCancel, Modifier.padding(16.dp).fillMaxWidth(), kind = ButtonKind.Outlined)
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            if (ui.cachedCount > 0) {
+                FujiButton(
+                    "Sfoglia intanto la galleria salvata", onBrowse, Modifier.padding(bottom = 8.dp).fillMaxWidth(),
+                    kind = ButtonKind.Tonal, height = 56.dp, icon = R.drawable.ic_photos,
+                )
+            }
+            FujiButton("Annulla", onCancel, Modifier.fillMaxWidth(), kind = ButtonKind.Outlined)
+        }
     }
 }
 
 @Composable
-private fun StepRow(k: Int, step: Int, title: String, sub: String) {
+private fun StepRow(k: Int, step: Int, title: String, sub: String, time: String) {
     val c = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(32.dp), contentAlignment = Alignment.Center) {
-            when {
-                k < step -> Box(Modifier.size(32.dp).clip(CircleShape).background(c.primary), contentAlignment = Alignment.Center) {
-                    Icon(painterResource(R.drawable.ic_check), null, Modifier.size(18.dp), tint = c.onPrimary)
-                }
-                else -> Box(Modifier.size(32.dp).border(2.dp, c.outline, CircleShape), contentAlignment = Alignment.Center) {
-                    if (k == step) Box(Modifier.size(10.dp).clip(CircleShape).background(c.primary))
-                }
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        when {
+            k < step -> Box(Modifier.size(36.dp).clip(CircleShape).background(c.primary), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_check), null, Modifier.size(20.dp), tint = c.onPrimary)
             }
+            k == step -> Box(Modifier.size(36.dp).clip(CircleShape).background(c.primaryContainer), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(12.dp).clip(CircleShape).background(c.onPrimaryContainer))
+            }
+            else -> Box(Modifier.size(36.dp).border(2.dp, c.outline, CircleShape))
         }
-        Column(Modifier.weight(1f).padding(start = 16.dp)) {
-            Text(
-                title, color = if (k > step) c.onSurfaceVariant else c.onSurface,
-                style = type(16, 24, medium = k == step),
-            )
-            if (sub.isNotEmpty() && k <= step) Text(sub, color = c.onSurfaceVariant, style = type(14, 20))
-            if (k == step) {
-                WavyBar(0, 100, c.primary, c.secondaryContainer, Modifier.padding(top = 4.dp).fillMaxWidth().height(12.dp), indeterminate = true)
-            }
+        Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
+            Text(title, color = if (k > step) c.onSurfaceVariant else c.onSurface, style = type(16, 22, medium = true))
+            Text(sub, color = c.onSurfaceVariant, style = type(13, 18))
+        }
+        if (time.isNotEmpty()) {
+            Text(time, color = if (k == step) c.primary else c.onSurfaceVariant, style = type(13, 18, medium = true), maxLines = 1)
         }
     }
 }
@@ -446,7 +596,12 @@ data class ErrorUi(
     val icon: Int = R.drawable.ic_wifi_off,
     val tips: List<Pair<Int, String>> = emptyList(),
     val log: String = "",
+    /** The steps of this attempt, in order, and the one that failed (filled by MainActivity). */
+    val events: List<ConnectEvent> = emptyList(),
 )
+
+/** One line of "Cosa è successo": a step done (ok) or the one that failed, with its time of day ("15:42:07"). */
+data class ConnectEvent(val ok: Boolean, val text: String, val time: String)
 
 private val TIP_NEAR = R.drawable.ic_bluetooth to "Tieni il telefono vicino alla camera, accesa"
 private val TIP_USB = R.drawable.ic_usb to "Se il cavo USB è collegato alla camera, scollegalo"
@@ -521,67 +676,82 @@ fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onCopy: () -> Unit, onRetry: ()
                 .padding(start = 16.dp, top = 8.dp, end = 16.dp),
         ) {
             // icon and title side by side, the message below
-            Row(Modifier.padding(start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(72.dp).clip(CircleShape).background(c.errorContainer).padding(18.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(64.dp).clip(CircleShape).background(c.errorContainer).padding(17.dp)) {
                     Icon(painterResource(ui.icon), null, Modifier.fillMaxSize(), tint = c.onErrorContainer)
                 }
                 Text(
-                    ui.title, Modifier.padding(start = 20.dp).weight(1f),
-                    color = c.onSurface, style = type(24, 32, medium = true),
+                    ui.title, Modifier.padding(start = 16.dp).weight(1f),
+                    color = c.onSurface, style = type(24, 30, medium = true),
                 )
             }
             if (ui.message.isNotEmpty() && ui.message != ui.title + ".") {
-                Text(
-                    ui.message, Modifier.padding(start = 4.dp, top = 16.dp, end = 4.dp),
-                    color = c.onSurface, style = type(16, 24),
-                )
+                Text(ui.message, Modifier.padding(top = 12.dp), color = c.onSurfaceVariant, style = type(15, 22))
+            }
+
+            // what this attempt got through, with the time of each step, and where it stopped
+            if (ui.events.isNotEmpty()) {
+                Column(
+                    Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
+                        .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 8.dp),
+                ) {
+                    Text("Cosa è successo", color = c.primary, style = type(14, 20, medium = true))
+                    ui.events.forEach { e -> EventRow(e) }
+                }
             }
 
             if (ui.tips.isNotEmpty()) {
                 Column(
-                    Modifier.padding(top = 20.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
-                        .padding(vertical = 12.dp),
+                    Modifier.padding(top = 12.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
+                        .background(c.surfaceContainer).padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 8.dp),
                 ) {
-                    Text(
-                        "Cosa puoi provare", Modifier.padding(start = 20.dp, top = 4.dp, bottom = 4.dp),
-                        color = c.primary, style = type(14, 20, medium = true),
-                    )
+                    Text("Cose che a volte aiutano", color = c.primary, style = type(14, 20, medium = true))
                     ui.tips.forEach { (icon, text) -> Tip(icon, text) }
-                }
-            }
-
-            Column(
-                Modifier.padding(top = 16.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
-                    .background(c.surfaceContainerHighest)
-                    .padding(start = 20.dp, top = 8.dp, end = 8.dp, bottom = 18.dp),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Registro tecnico", Modifier.weight(1f), color = c.onSurface, style = type(14, 20, medium = true))
-                    FujiButton("Copia", onCopy, kind = ButtonKind.Tonal, height = 40.dp, icon = R.drawable.ic_copy)
-                }
-                SelectionContainer {
-                    Text(
-                        ui.log, Modifier.padding(top = 8.dp, end = 12.dp), color = c.onSurfaceVariant,
-                        style = TextStyle(fontSize = 12.sp, lineHeight = 18.sp, fontFamily = FontFamily.Monospace),
-                    )
                 }
             }
         }
 
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            FujiButton("Riprova", onRetry, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, icon = R.drawable.ic_retry)
-            FujiButton("Abbina nuova camera", onRepair, Modifier.padding(top = 8.dp).fillMaxWidth(), kind = ButtonKind.Text)
+            FujiButton("Riprova", onRetry, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, height = 60.dp, icon = R.drawable.ic_retry)
+            Row(Modifier.padding(top = 8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FujiButton(
+                    "Copia i dettagli tecnici", onCopy, Modifier.weight(1f), kind = ButtonKind.Outlined,
+                    icon = R.drawable.ic_copy, contentColor = c.onSurface,
+                )
+                FujiButton("Abbina nuova camera", onRepair, Modifier.weight(1f), kind = ButtonKind.Text)
+            }
         }
+    }
+}
+
+@Composable
+private fun EventRow(e: ConnectEvent) {
+    val c = MaterialTheme.colorScheme
+    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier.size(24.dp).clip(CircleShape).background(if (e.ok) c.primary else c.error),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                painterResource(if (e.ok) R.drawable.ic_check else R.drawable.ic_close), null,
+                Modifier.size(if (e.ok) 16.dp else 14.dp), tint = if (e.ok) c.onPrimary else c.onError,
+            )
+        }
+        Text(e.text, Modifier.weight(1f).padding(start = 12.dp, end = 8.dp), color = c.onSurface, style = type(14, 20))
+        Text(
+            e.time, color = c.onSurfaceVariant,
+            style = type(12, 16).copy(fontFeatureSettings = "tnum"),
+        )
     }
 }
 
 @Composable
 private fun Tip(icon: Int, text: String) {
     val c = MaterialTheme.colorScheme
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.size(40.dp).clip(CircleShape).background(c.secondaryContainer).padding(9.dp)) {
+    Row(Modifier.fillMaxWidth().heightIn(min = 44.dp).padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(32.dp).clip(CircleShape).background(c.secondaryContainer).padding(7.dp)) {
             Icon(painterResource(icon), null, Modifier.fillMaxSize(), tint = c.onSecondaryContainer)
         }
-        Text(text, Modifier.padding(start = 16.dp), color = c.onSurface, style = type(14, 20))
+        Text(text, Modifier.padding(start = 12.dp), color = c.onSurface, style = type(14, 20))
     }
 }

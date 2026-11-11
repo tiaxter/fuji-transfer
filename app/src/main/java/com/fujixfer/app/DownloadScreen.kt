@@ -1,5 +1,10 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import android.content.res.ColorStateList
 import android.view.View
 import androidx.compose.animation.core.animateDpAsState
@@ -74,6 +79,8 @@ data class DownloadUi(
     val currentTotal: Long = 0,
     /** Bumped when thumbnails arrive: the rows read them from Thumbs when they are drawn. */
     val thumbVersion: Int = 0,
+    /** What follows the download ("Poi su Immich, appena c'è il Wi-Fi"), "" = nothing. */
+    val next: String = "",
 )
 
 @Composable
@@ -106,9 +113,15 @@ fun DownloadScreen(
                 .padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 22.dp),
         ) {
             Row(Modifier.fillMaxWidth()) {
+                val n = ui.title.substringBefore(" di ")
+                val of = ui.title.substringAfter(" di ", "")
                 Text(
-                    ui.title, Modifier.weight(1f).alignByBaseline(),
-                    color = c.onPrimaryContainer, style = type(40, 48),
+                    buildAnnotatedString {
+                        withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(n) }
+                        if (of.isNotEmpty()) withStyle(SpanStyle(fontSize = 22.sp)) { append(" di $of") }
+                    },
+                    Modifier.weight(1f).alignByBaseline(),
+                    color = c.onPrimaryContainer, style = type(48, 52),
                 )
                 Text(ui.bytes, Modifier.alignByBaseline(), color = c.onPrimaryContainer, style = type(14, 20, medium = true))
             }
@@ -123,18 +136,31 @@ fun DownloadScreen(
                 Icon(painterResource(R.drawable.ic_clock), null, Modifier.size(18.dp), tint = c.onPrimaryContainer)
                 Text(ui.eta, Modifier.padding(start = 6.dp), color = c.onPrimaryContainer, style = type(14, 20))
             }
+            if (ui.next.isNotEmpty()) {
+                Box(Modifier.padding(top = 10.dp).fillMaxWidth().height(1.dp).background(c.onPrimaryContainer.copy(alpha = 0.2f)))
+                Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(painterResource(R.drawable.ic_cloud_upload), null, Modifier.size(18.dp), tint = c.onPrimaryContainer)
+                    Text(ui.next, Modifier.padding(start = 8.dp), color = c.onPrimaryContainer, style = type(13, 18))
+                }
+            }
         }
 
-        // the connection dropped and the transfer went on
-        if (ui.retryNote.isNotEmpty()) {
+        // the connection dropped and the transfer went on (can be put away)
+        var closedNote by remember { mutableStateOf("") }
+        if (ui.retryNote.isNotEmpty() && ui.retryNote != closedNote) {
             Row(
-                Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp).fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp)).background(c.tertiaryContainer)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                Modifier.padding(start = 16.dp, top = 10.dp, end = 16.dp).fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp)).background(c.tertiaryContainer)
+                    .padding(start = 14.dp, top = 8.dp, end = 4.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(painterResource(R.drawable.ic_retry), null, Modifier.size(22.dp), tint = c.onTertiaryContainer)
-                Text(ui.retryNote, Modifier.padding(start = 12.dp), color = c.onTertiaryContainer, style = type(14, 20))
+                Box(Modifier.size(36.dp).clip(CircleShape).background(c.tertiary.copy(alpha = 0.18f)), contentAlignment = Alignment.Center) {
+                    Icon(painterResource(R.drawable.ic_retry), null, Modifier.size(20.dp), tint = c.onTertiaryContainer)
+                }
+                Text(ui.retryNote, Modifier.weight(1f).padding(start = 12.dp), color = c.onTertiaryContainer, style = type(14, 20))
+                IconButton(onClick = { closedNote = ui.retryNote }) {
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Chiudi avviso", tint = c.onTertiaryContainer)
+                }
             }
         }
 
@@ -143,7 +169,7 @@ fun DownloadScreen(
             Modifier.fillMaxWidth().padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("File", Modifier.weight(1f), color = c.primary, style = type(14, 20, medium = true))
+            Text("File", Modifier.weight(1f), color = c.onSurface, style = type(16, 22, medium = true))
             Text(ui.counts, color = c.onSurfaceVariant, style = type(12, 16))
         }
 
@@ -160,15 +186,13 @@ fun DownloadScreen(
 
         KeepAwakeRow(keepAwake, onKeepAwake, Modifier.padding(start = 16.dp, top = 8.dp, end = 16.dp))
 
-        // cancel / keep downloading in the background (back to the gallery): connected pair
+        // cancel (outlined) / keep downloading in the background (back to the gallery, the main way out)
         Row(
             Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            PairButton("Annulla", first = true, container = c.surfaceContainerHighest, content = c.onSurface,
-                onClick = onCancel, modifier = Modifier.weight(1f))
-            PairButton("Continua in background", first = false, container = c.secondaryContainer, content = c.onSecondaryContainer,
-                onClick = onBackground, modifier = Modifier.weight(1f))
+            FujiButton("Annulla", onCancel, Modifier.weight(1f), kind = ButtonKind.Outlined, height = 56.dp, contentColor = c.onSurface)
+            FujiButton("Continua in background", onBackground, Modifier.weight(2f), kind = ButtonKind.Filled, height = 56.dp)
         }
     }
 }
@@ -206,27 +230,5 @@ private fun FileRow(info: ObjectInfo, current: Boolean, finished: Boolean, pct: 
             }
             else -> Text("In coda", Modifier.padding(start = 8.dp), color = c.onSurfaceVariant, style = type(12, 16, medium = true), maxLines = 1)
         }
-    }
-}
-
-/**
- * A button of a connected pair: wide outer corners, 8 dp inner corners; pressed, the outer corners tighten.
- * [first] is the left one.
- */
-@Composable
-private fun PairButton(text: String, first: Boolean, container: Color, content: Color, onClick: () -> Unit, modifier: Modifier) {
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val outer by animateDpAsState(if (pressed) 12.dp else 28.dp, tween(if (pressed) 120 else 220), label = "corner")
-    val inner = 8.dp
-    val shape = if (first) RoundedCornerShape(topStart = outer, topEnd = inner, bottomEnd = inner, bottomStart = outer)
-    else RoundedCornerShape(topStart = inner, topEnd = outer, bottomEnd = outer, bottomStart = inner)
-    Box(
-        modifier.height(48.dp).clip(shape).background(container)
-            .clickable(interactionSource = source, indication = LocalIndication.current, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 8.dp),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(text, color = content, style = type(14, 20, medium = true), maxLines = 1, textAlign = TextAlign.Center)
     }
 }

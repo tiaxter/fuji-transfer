@@ -53,3 +53,29 @@ Telefono di prova: OPPO PME110, Android 16 (API 36). Interfaccia e log in italia
 - `GalleryChrome.kt`: chip «Pellicola» dopo «Luogo» (campi `film`, `filmLabel`, azioni `onFilm`, `onClearFilm` con default).
 - `MainActivity.kt`: `films`, `filmSheet`, `matchesFilm` in `matches()`, `applyFilms`, `clearFilm`, `filmOptions`. Come per il luogo, scegliere una pellicola porta «Nuove» su «Tutte».
 - Non compilato (nessun Docker/SDK qui). Backup: `docs/backup-2026-11-04-film/`. Studio Portrait non ha un simbolo: usa `ic_film`.
+
+## Revisione UX (11 nov 2026)
+Dal canvas "Fuji Transfer · Expressive", riga "Revisione UX: schermate riviste" (artboard `Rev-*`).
+- Connetti: camera in una scheda più compatta (cerchio 88 dp, chip «Abbinata», pallino Wi-Fi), scheda «Ultima sessione»
+  (quando, foto scaricate, quante ancora per Immich; «Apri la galleria salvata · N file»), «Come funziona» ripiegato
+  (dentro anche «Dimentica la camera abbinata»), pulsante «Connetti» da 64 dp, «Abbina nuova camera» e «Connessione
+  manuale» affiancati. La scheda Backup/Immich resta (nel design non c'è, ma è l'unico accesso a Immich da qui).
+- Connessione: passi nuovi (0 Bluetooth e abbinamento, 1 Wi-Fi della camera, 2 collegamento alla rete, 3 elenco;
+  `TransferService.launchAndJoin` ora pubblica 1 e poi 2), secondi trascorsi, tempo di ogni passo fatto e tempi
+  «di solito» presi dalle ultime 5 connessioni Bluetooth riuscite (pref `connectTimes`; prima della prima nessuna stima),
+  avviso sulla richiesta di Android, «Sfoglia intanto la galleria salvata» se c'è un elenco salvato.
+- Galleria dalla cache: l'elenco salvato (`TransferService.cachedListing`, file `listing-ble-<indirizzo>.tsv`) si
+  sfoglia senza camera, con pallino vuoto «Dalla cache · N file» e la scheda «Collego la camera… 14 s» / «Camera non
+  collegata». Miniature solo quelle già su disco; tocco = seleziona (niente visore). «Accoda» (orologio) ricorda le
+  foto per nome|data e le scarica appena la camera è collegata ed elencata (stesso meccanismo di «Riconnetti e
+  riprendi»); a connessione avvenuta la selezione passa alle foto vere. Filtri Data/Luogo/Pellicola: solo da connessi.
+- Errore: «Cosa è successo» con i passi riusciti e quello fallito, con l'ora; «Cose che a volte aiutano»; il registro
+  non è più nella schermata («Copia i dettagli tecnici»).
+- Galleria: intestazioni dei giorni su due righe («21 file · 3 già sul telefono»), celle già sul telefono più tenui,
+  × nella barra di selezione, pulsante seleziona tonale.
+- Download: «7 di 12» con il totale più piccolo, riga «Poi su Immich…» se il modo è «Sempre», avviso della caduta
+  chiudibile, «Annulla» delineato e «Continua in background» pieno.
+- Immich: scheda del server («Connesso», chi e dove) con «N foto in attesa», ultimo invio e «Invia ora».
+- Non fatto: il visore con il pannello fisso in basso (`Rev-Visore`): resta il foglio dettagli che si apre da (i).
+- Non compilato con Gradle (nel container Google Maven è bloccato): le schermate Compose cambiate sono state
+  controllate con kotlinc 2.2.10 contro Compose Desktop 1.8.2; `MainActivity` solo riletta.

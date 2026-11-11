@@ -55,6 +55,17 @@ class TransferService : Service() {
         const val ACTION_PAIR_BLE = "com.fujixfer.app.PAIR_BLE"
         const val ACTION_CONNECT_BLE = "com.fujixfer.app.CONNECT_BLE"
         const val PREF_PAIRING = "ble_pairing"
+
+        /** The listing saved at the last connection to [key] ("ble-" + Bluetooth address, …). */
+        fun listingFile(c: Context, key: String) =
+            File(c.filesDir, "listing-" + key.replace(Regex("[^A-Za-z0-9]"), "_") + ".tsv")
+
+        /** The files of the last listing of [key], null if there is none: the gallery can show them offline. */
+        fun cachedListing(c: Context, key: String): List<ObjectInfo>? = try {
+            listingFile(c, key).takeIf { it.exists() }?.readLines()?.mapNotNull { ObjectInfo.fromLine(it) }
+        } catch (e: IOException) {
+            null
+        }
         /** + listing key: the camera answers only the last of several queued requests (see TransferEngine.Options). */
         private const val PREF_NO_QUEUE_PREFIX = "no_queue_"
         const val ACTION_DOWNLOAD = "com.fujixfer.app.DOWNLOAD"
@@ -550,14 +561,9 @@ class TransferService : Service() {
     /** Identifies the camera for the listing cache; set by the connector before the session opens. */
     @Volatile private var listingKey: String? = null
 
-    private fun listingFile(key: String) =
-        File(filesDir, "listing-" + key.replace(Regex("[^A-Za-z0-9]"), "_") + ".tsv")
+    private fun listingFile(key: String) = listingFile(this, key)
 
-    private fun loadListing(key: String): List<ObjectInfo>? = try {
-        listingFile(key).takeIf { it.exists() }?.readLines()?.mapNotNull { ObjectInfo.fromLine(it) }
-    } catch (e: IOException) {
-        null
-    }
+    private fun loadListing(key: String): List<ObjectInfo>? = cachedListing(this, key)
 
     private fun saveListing(key: String, list: List<ObjectInfo>) {
         try {
@@ -696,9 +702,12 @@ class TransferService : Service() {
     }
 
     private fun launchAndJoin(link: BleGattLink, red: Boolean) {
-        TransferState.connectStep = 2
+        TransferState.connectStep = 1
+        TransferState.publish()
         val c = FujiBle.launchWifi(link, red, 25_000, bleLog)
         phase("Wi-Fi acceso dalla camera")
+        TransferState.connectStep = 2
+        TransferState.publish()
         if (cancelRequested) throw TransferEngine.CancelledException()
         setStatus("Mi collego al Wi-Fi ${c.ssid}… (conferma la richiesta di Android se compare)")
         // Like XApp (WiFiHandOverService): always the exact name + BSSID, retried as is. A request without the

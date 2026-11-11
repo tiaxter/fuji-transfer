@@ -26,7 +26,10 @@ object TransferState {
     @Volatile var connectionLabel: String = ""
     /** Name shown in the gallery's top bar (Bluetooth name of the body, or a generic label). */
     @Volatile var cameraName: String = ""
-    /** Connecting screen: 0 looking for the camera, 1 pairing recognised, 2 camera Wi-Fi, 3 session and list. */
+    /**
+     * Connecting screen: 0 Bluetooth (find the camera, pairing), 1 the camera turns on its Wi-Fi, 2 the phone joins
+     * that network, 3 session and list.
+     */
     @Volatile var connectStep: Int = 0
     /** Files of the running download batch, in order (batchIndex is 1-based into it). */
     @Volatile var batch: List<ObjectInfo> = emptyList()

@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.unit.em
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -80,10 +81,12 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
     // queue size and access problems, kept fresh while the screen is open
     var queued by remember { mutableIntStateOf(0) }
     var blocked by remember { mutableStateOf("") }
+    var lastSent by remember { mutableStateOf("") }
     LaunchedEffect(Unit) {
         while (true) {
             queued = ImmichSync.queued(ctx).size + ImmichSync.failed(ctx).size
             blocked = ImmichSync.blocked(ctx)
+            lastSent = ImmichSync.lastSummary(ctx).substringBefore(" — ")
             delay(1000)
         }
     }
@@ -176,6 +179,13 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     who = if (saved.useLogin) saved.email else "Chiave API",
                     where = hostOf(saved.url) + (if (serverInfo.isNotEmpty()) " · " + serverInfo.substringBefore(" · ") else ""),
                     problem = blocked,
+                    queued = queued,
+                    waitingFor = if (saved.wifiOnly) "Partono col Wi‑Fi, anche ad app chiusa" else "Partono appena c'è la rete",
+                    last = lastSent,
+                    onSendNow = {
+                        ImmichSync.uploadNowAnyNetwork(ctx)
+                        onUploads()
+                    },
                     onSignOut = {
                         ImmichSync.signOut(ctx)
                         saved = ImmichSync.settings(ctx)
@@ -257,28 +267,58 @@ private fun SectionTitle(text: String) {
 }
 
 /** Signed in: account, server, "Esci"; [problem] = the server's last refusal (access or address), if any. */
+/**
+ * The server: connected (or the sign-in to redo), who and where, "Esci"; under a line, what waits to go up and
+ * "Invia ora" (this once also on mobile data).
+ */
 @Composable
-private fun LinkedCard(who: String, where: String, problem: String, onSignOut: () -> Unit) {
+private fun LinkedCard(
+    who: String, where: String, problem: String, queued: Int, waitingFor: String, last: String,
+    onSendNow: () -> Unit, onSignOut: () -> Unit,
+) {
     val c = MaterialTheme.colorScheme
     val bad = problem.isNotEmpty()
-    Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(if (bad) c.errorContainer else c.primaryContainer)
-            .padding(start = 16.dp, top = 16.dp, end = 12.dp, bottom = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(if (bad) c.errorContainer else c.surfaceContainer)
+            .padding(start = 16.dp, top = 16.dp, end = 12.dp, bottom = 12.dp),
     ) {
-        Box(
-            Modifier.size(52.dp).clip(CircleShape).background(if (bad) c.error else c.primary),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(painterResource(R.drawable.ic_immich), null, Modifier.size(30.dp), tint = if (bad) c.onError else c.onPrimary)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(56.dp).clip(CircleShape).background(if (bad) c.error else c.primaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(painterResource(R.drawable.ic_immich), null, Modifier.size(30.dp), tint = if (bad) c.onError else c.onPrimaryContainer)
+            }
+            val fg = if (bad) c.onErrorContainer else c.onSurface
+            val soft = if (bad) c.onErrorContainer else c.onSurfaceVariant
+            Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                Text("Server", color = soft, style = type(12, 16).copy(letterSpacing = 0.06.em))
+                Text(if (bad) "Accesso da rifare" else "Connesso", color = fg, style = type(24, 30, medium = true))
+                Text(if (bad) problem else "$who · $where", color = soft, style = type(14, 20), maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            FujiButton("Esci", onSignOut, kind = ButtonKind.Text, height = 40.dp, contentColor = if (bad) c.onErrorContainer else c.primary)
         }
-        val fg = if (bad) c.onErrorContainer else c.onPrimaryContainer
-        Column(Modifier.weight(1f).padding(start = 14.dp)) {
-            Text(if (bad) "Accesso da rifare" else "Collegato", color = fg, style = type(12, 16, medium = true))
-            Text(who, color = fg, style = type(16, 24, medium = true), maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(if (bad) problem else where, color = fg, style = type(14, 20), maxLines = 2, overflow = TextOverflow.Ellipsis)
+        if (!bad) {
+            Box(Modifier.padding(top = 12.dp, bottom = 8.dp).fillMaxWidth().height(1.dp).background(c.outlineVariant))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f).padding(end = 8.dp)) {
+                    Text(
+                        when (queued) {
+                            0 -> "Nessuna foto in attesa"
+                            1 -> "1 foto in attesa"
+                            else -> "$queued foto in attesa"
+                        },
+                        color = c.onSurface, style = type(16, 22, medium = true),
+                    )
+                    val sub = listOfNotNull(
+                        if (queued > 0) waitingFor else null,
+                        if (last.isNotEmpty()) "ultimo invio $last" else null,
+                    ).joinToString(" · ")
+                    if (sub.isNotEmpty()) Text(sub, color = c.onSurfaceVariant, style = type(13, 18))
+                }
+                if (queued > 0) FujiButton("Invia ora", onSendNow, kind = ButtonKind.Tonal, icon = R.drawable.ic_cloud_upload)
+            }
         }
-        FujiButton("Esci", onSignOut, kind = ButtonKind.Text, height = 40.dp, contentColor = fg)
     }
 }
 

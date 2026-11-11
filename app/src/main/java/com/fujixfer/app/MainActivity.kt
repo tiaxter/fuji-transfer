@@ -98,6 +98,29 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     /** 0 = disconnecting first, 1 = connecting, 2 = connected (waiting for the listing). */
     private var resumeStep = 0
     private var resumePosted = false
+
+    // The listing saved at the last connection, shown as the gallery before the camera is there ("Dalla cache"):
+    // from "Apri la galleria salvata" (offline) or "Sfoglia intanto la galleria salvata" (while connecting).
+    private var cacheBrowse by mutableStateOf(false)
+    private var cache: List<ObjectInfo>? = null
+    private var cacheKey: String? = null
+    /** Files chosen in the saved listing (keys name|date): chosen again as the camera's own list brings them. */
+    private var pendingSelKeys: Set<String>? = null
+    /** The files the gallery is made of: the camera's list, or the saved one while browsing it offline. */
+    private val shownList: List<ObjectInfo>
+        get() = if (inCache) cache.orEmpty() else TransferState.objects
+    private val inCache: Boolean get() = cacheBrowse && !TransferState.connected && cache != null
+
+    // How long each step of the connection takes ("5,6 s"), and when it ended, for the connecting and error screens
+    private var attemptStart = 0L
+    private var stepStart = 0L
+    private var lastStep = -1
+    private val stepTook = arrayOfNulls<Long>(4)
+    private val stepEndedAt = arrayOfNulls<Long>(4)
+    private var wasConnecting = false
+    /** The step the last attempt stopped at (-1 = it did not fail while connecting), and when. */
+    private var failedStep = -1
+    private var failedAt = 0L
     /** "Annullare il download?" and "Scollegare la X-T5?" sheets. */
     private var cancelInfo by mutableStateOf<CancelInfo?>(null)
     private var disconnectInfo by mutableStateOf<DisconnectInfo?>(null)
@@ -254,6 +277,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             badgeIcon = badgeIcon,
             placeholder = if (missing) kindOf(i).label else "",
             loading = bmp == null && !missing && TransferState.connected,
+            want = bmp == null && !missing && inCache, // offline: the thumbnails already on disk
             description = i.filename + (if (sel) ", selezionata" else "") + (if (isDone) ", sul telefono" else "") +
                 (if (key(i) in immichQueued) ", in coda per Immich" else if (key(i) in immichDone) ", su Immich" else ""),
         )
@@ -261,7 +285,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     /** A tap on a cell, like Google Photos: opens the photo; once something is selected (selection mode) it selects. */
     private fun tileTapped(i: ObjectInfo) {
-        if (selected.isEmpty()) openViewer(i) else toggle(i)
+        if (selected.isEmpty() && !inCache) openViewer(i) else toggle(i)
     }
 
     // bulk selection by dragging (touch and hold, then drag over other cells)
@@ -552,7 +576,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private val galleryTopActions by lazy {
         GalleryTopActions(
             // the arrow at the top of the gallery leaves the camera: asked first, a new connection takes a while
-            onBack = { confirmDisconnect() },
+            onBack = { if (cacheBrowse && !TransferState.connected) leaveCache() else confirmDisconnect() },
             onSelectAll = {
                 val all = files.isNotEmpty() && files.all { it.handle in selected }
                 if (all) files.forEach { selected.remove(it.handle) } else files.forEach { selected.add(it.handle) }
@@ -574,6 +598,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 filter = Filter.values()[i]
                 rebuildRows()
                 updateChips()
+            },
+            onLink = {
+                // the card over the saved gallery: stop the attempt, or start one
+                if (TransferState.busy) sendAction(TransferService.ACTION_DISCONNECT) else connectClicked()
             },
         )
     }
@@ -620,10 +648,16 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         onLog = { showLog() },
                         onShareLog = { shareLog() },
                         onImmich = { showUploads() },
+                        onSavedGallery = { openSavedGallery() },
                     ),
                 )
             }
-            Layer(showConnecting) { ConnectingScreen(connectingUi, onCancel = { sendAction(TransferService.ACTION_DISCONNECT) }) }
+            Layer(showConnecting) {
+                ConnectingScreen(
+                    connectingUi, onCancel = { sendAction(TransferService.ACTION_DISCONNECT) },
+                    onBrowse = { openSavedGallery() },
+                )
+            }
             Layer(showError) {
                 ErrorScreen(
                     ui = errorUi,
@@ -648,7 +682,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     }
                     GalleryBottom(
                         galleryBottomUi, onStrip = { showDownloads() }, onDownload = { downloadSelected() },
-                        onUpload = { uploadSelected() }, onUndo = { undoUpload() },
+                        onUpload = { uploadSelected() }, onUndo = { undoUpload() }, onClear = { clearSelection() },
                     )
                 }
             }
@@ -887,20 +921,33 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             done = doneSet()
         }
         if (ImmichSync.version != immichVersion) readImmichMarks()
-        if (st.objects !== shownObjects) {
+        if (cacheBrowse && st.connected) {
+            // the camera's own list takes over from the saved one: what was chosen there stays chosen
+            val chosen = cache.orEmpty().filter { it.handle in selected }.map { key(it) }
+            pendingSelKeys = pendingSelKeys.orEmpty() + chosen
+            selected.clear()
+            cacheBrowse = false
+        }
+        pendingSelKeys?.let { keys ->
+            val hit = st.objects.filter { key(it) in keys }
+            hit.forEach { selected.add(it.handle) }
+            pendingSelKeys = (keys - hit.map { key(it) }.toSet()).takeIf { it.isNotEmpty() && (st.listing || st.busy) }
+        }
+        val list = shownList
+        if (list !== shownObjects) {
             // a RAF gets the thumbnail of its JPG/HEIF (same picture, cheaper to fetch)
             val images = HashMap<String, ObjectInfo>()
-            for (o in st.objects) if (!o.filename.endsWith(".RAF", ignoreCase = true) && kindOf(o) == Kind.PHOTO) {
+            for (o in list) if (!o.filename.endsWith(".RAF", ignoreCase = true) && kindOf(o) == Kind.PHOTO) {
                 images[Thumbs.key(o)] = o
             }
             Thumbs.sibling = { raf -> images[Thumbs.key(raf)] }
             val first = shownObjects.isNullOrEmpty()
-            shownObjects = st.objects
+            shownObjects = list
             // the list grows while the camera is still being read: keep what the user already selected
-            val present = st.objects.mapTo(HashSet()) { it.handle }
+            val present = list.mapTo(HashSet()) { it.handle }
             selected.retainAll(present)
-            if (first && st.objects.isNotEmpty()) {
-                filter = if (st.objects.any { key(it) !in done }) Filter.NEW else Filter.ALL
+            if (first && list.isNotEmpty()) {
+                filter = if (list.any { key(it) !in done }) Filter.NEW else Filter.ALL
             }
             rebuildRows()
         } else if (lastBusy && !st.busy) {
@@ -916,7 +963,12 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             onBatchEnded(ended, wasVisible = showDownload)
         }
         lastBusy = st.busy
-        if (st.connected && !wasConnected) connectedAtMs = System.currentTimeMillis()
+        if (st.connected && !wasConnected) {
+            connectedAtMs = System.currentTimeMillis()
+            getSharedPreferences("fuji", MODE_PRIVATE).edit()
+                .putLong("lastSessionAt", connectedAtMs).putInt("lastSessionSaved", 0).apply()
+        }
+        if (!st.connected && wasConnected) cacheKey = null // the list saved at this connection is newer: read it again
         wasConnected = st.connected
         resumeStepCheck()
 
@@ -925,10 +977,13 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val downloading = st.busy && st.progressName.isNotEmpty()
         val connecting = st.busy && !st.connected
         val failed = !st.connected && !st.busy && st.statusIsError && st.status != dismissedError
-        showConnect = !st.connected && !connecting && !failed
-        showConnecting = connecting
+        trackSteps(connecting)
+        if (failed) cacheBrowse = false // the error screen says why
+        val browsing = inCache
+        showConnect = !st.connected && !connecting && !failed && !browsing
+        showConnecting = connecting && !browsing
         showError = failed
-        showGallery = st.connected
+        showGallery = st.connected || browsing
         if (downloading) quietBatchPending = false
         if (!downloading && !quietBatchPending) downloadsHidden = false // the next batch opens its screen again
         showDownload = downloading && !downloadsHidden
@@ -938,7 +993,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         updateConnect()
         if (connecting) updateConnecting()
         if (failed) updateError()
-        if (st.connected) updateGalleryHeader()
+        if (st.connected) updateGalleryHeader() else if (browsing) updateCacheHeader()
         updateChips()
         updateBottom()
         if (downloading) updateDownload() else {
@@ -963,6 +1018,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         val paired = pairing()
         val immichSettings = ImmichSync.settings(this)
+        val prefs = getSharedPreferences("fuji", MODE_PRIVATE)
+        val lastAt = prefs.getLong("lastSessionAt", 0L)
+        val lastSaved = prefs.getInt("lastSessionSaved", 0)
+        val forImmich = if (immichSettings.configured) immichQueued.size else 0
         connectUi = ConnectUi(
             useWifi = useWifi,
             canConnect = !st.connected && !st.busy,
@@ -978,6 +1037,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 st.busy -> "Wi-Fi in avvio"
                 else -> "Wi-Fi non collegato"
             },
+            wifiOn = st.connected && st.connectionLabel != "USB",
+            lastWhen = if (lastAt > 0) whenLabel(lastAt) else "",
+            lastText = if (lastAt <= 0) "" else when (lastSaved) {
+                0 -> "Nessuna foto scaricata"
+                1 -> "1 foto scaricata"
+                else -> "$lastSaved foto scaricate"
+            } + if (forImmich > 0) " · $forImmich ancora da inviare a Immich" else "",
+            cachedCount = if (paired != null && !st.busy) savedListing()?.size ?: 0 else 0,
             manualOpen = manualOpen,
             usbStatus = usbStatus,
             backupLinked = immichSettings.configured,
@@ -999,24 +1066,98 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val st = TransferState
         val usb = st.connectionLabel == "USB"
         val step = st.connectStep.coerceIn(0, 3)
+        val t = typicalTimes()
+        val saved = if (usb) null else savedListing()
         connectingUi = ConnectingUi(
             usb = usb,
             step = step,
             title = when {
                 usb -> "Apro la camera via USB…"
                 step == 0 -> "Cerco la camera…"
-                step == 1 -> "Camera trovata"
-                step == 2 -> "Accendo il Wi-Fi della camera…"
-                else -> "Apro la sessione…"
+                step == 1 -> "Accendo il Wi-Fi della camera…"
+                step == 2 -> "Mi collego alla camera…"
+                else -> "Leggo l'elenco delle foto…"
             },
-            detail = st.status,
             icon = when {
                 usb -> R.drawable.ic_usb
-                step <= 1 -> R.drawable.ic_bluetooth
-                step == 2 -> R.drawable.ic_wifi
+                step == 0 -> R.drawable.ic_bluetooth
+                step <= 2 -> R.drawable.ic_wifi
                 else -> R.drawable.ic_photos
             },
+            startedAt = attemptStart,
+            stepStartedAt = stepStart,
+            took = stepTook.toList(),
+            typical = if (usb) listOf(null, null, null, null) else t.perStep,
+            typicalTotal = if (usb) "" else t.label,
+            typicalMax = if (usb) 0 else t.max,
+            hasCache = !saved.isNullOrEmpty(),
+            cachedCount = saved?.size ?: 0,
         )
+    }
+
+    /** Notes when each step of the attempt in progress starts and ends; a full Bluetooth connection is remembered. */
+    private fun trackSteps(connecting: Boolean) {
+        val st = TransferState
+        val now = System.currentTimeMillis()
+        if (connecting && !wasConnecting) {
+            attemptStart = now
+            stepStart = now
+            lastStep = st.connectStep
+            stepTook.fill(null)
+            stepEndedAt.fill(null)
+            failedStep = -1
+        }
+        if (connecting && st.connectStep != lastStep) {
+            // a step skipped (manual Wi-Fi starts at 2) has no time of its own
+            if (st.connectStep > lastStep && lastStep >= 0) {
+                stepTook[lastStep] = now - stepStart
+                stepEndedAt[lastStep] = now
+            }
+            lastStep = st.connectStep
+            stepStart = now
+        }
+        if (wasConnecting && !connecting) {
+            if (st.connected) {
+                if (lastStep == 3) {
+                    stepTook[3] = now - stepStart
+                    stepEndedAt[3] = now
+                }
+                if (st.connectionLabel != "USB" && stepTook.all { it != null }) saveTimes(stepTook.map { it!! })
+                failedStep = -1
+            } else {
+                failedStep = lastStep
+                failedAt = now
+            }
+        }
+        wasConnecting = connecting
+    }
+
+    private class Typical(val perStep: List<Long?>, val label: String, val max: Long)
+
+    /** The last five Bluetooth connections, step by step (ms). */
+    private fun pastTimes(): List<List<Long>> =
+        (getSharedPreferences("fuji", MODE_PRIVATE).getString("connectTimes", "") ?: "").lines()
+            .mapNotNull { line -> line.split(',').mapNotNull { it.toLongOrNull() }.takeIf { it.size == 4 } }
+
+    private fun saveTimes(t: List<Long>) {
+        val lines = (pastTimes() + listOf(t)).takeLast(5).joinToString("\n") { it.joinToString(",") }
+        getSharedPreferences("fuji", MODE_PRIVATE).edit().putString("connectTimes", lines).apply()
+    }
+
+    /** What the last connections took: the median of each step, the range of the totals. Nothing before the first. */
+    private fun typicalTimes(): Typical {
+        val past = pastTimes()
+        if (past.isEmpty()) return Typical(listOf(null, null, null, null), "", 0)
+        val per = (0 until 4).map { k -> past.map { it[k] }.sorted()[past.size / 2] }
+        val totals = past.map { it.sum() / 1000 }
+        val lo = totals.min()
+        val hi = totals.max()
+        val label = when {
+            past.size == 1 -> "l'ultima volta $hi s in tutto"
+            lo == hi -> "di solito $hi s in tutto"
+            else -> "di solito $lo–$hi s in tutto"
+        }
+        return Typical(per, label, hi * 1000)
     }
 
     // ------------------------------------------------------------------ error screen
@@ -1026,7 +1167,33 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             TransferState.status,
             DebugLog.text().lines().filter { it.isNotBlank() }.takeLast(6).joinToString("\n")
                 .ifEmpty { "Il registro è vuoto." },
+        ).copy(events = connectEvents())
+    }
+
+    /** "Cosa è successo": the steps this attempt got through, with their time of day, then the one it stopped at. */
+    private fun connectEvents(): List<ConnectEvent> {
+        val k = failedStep
+        if (k < 0 || TransferState.connectionLabel == "USB") return emptyList()
+        val fmt = java.text.SimpleDateFormat("HH:mm:ss", Locale.ITALY)
+        val name = TransferState.cameraName.takeIf { it.isNotEmpty() && it != "Camera" } ?: "la camera"
+        val ok = listOf(
+            "Bluetooth: trovata $name, abbinamento riconosciuto",
+            "La camera ha acceso il suo Wi-Fi",
+            "Telefono collegato alla rete della camera",
         )
+        val failed = listOf(
+            "Bluetooth e abbinamento: non riuscito",
+            "Accensione del Wi-Fi della camera: non riuscita",
+            "Collegamento alla rete della camera: non riuscito",
+            "Sessione ed elenco delle foto: non riusciti",
+        )
+        val out = ArrayList<ConnectEvent>()
+        for (i in 0 until k.coerceAtMost(3)) {
+            val at = stepEndedAt[i] ?: continue
+            out.add(ConnectEvent(true, ok[i], fmt.format(java.util.Date(at))))
+        }
+        out.add(ConnectEvent(false, failed[k.coerceIn(0, 3)], fmt.format(java.util.Date(failedAt))))
+        return out
     }
 
     // ------------------------------------------------------------------ gallery
@@ -1043,6 +1210,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val transient = !st.statusIsError && !st.status.startsWith("Connesso") && !st.status.startsWith("Finito") &&
             !st.status.startsWith("Leggo l'elenco") && !st.status.startsWith("Sessione aperta")
         galleryTopUi = galleryTopUi.copy(
+            cached = false,
+            link = null,
             title = st.cameraName.ifEmpty { "Camera" },
             info = "${st.connectionLabel} · ${formatCount(count)} file",
             banner = if (st.statusIsError) st.status + "\n\nTocca qui per il registro tecnico." else "",
@@ -1055,7 +1224,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
 
     private fun rebuildRows() {
-        val all = TransferState.objects
+        val all = shownList
         files = all.filter { matches(it) }
         val out = ArrayList<GridRow>()
         val st = TransferState
@@ -1074,7 +1243,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 if (present.isEmpty() && ghosts == 0) continue
                 // with handles, the count is what this day really holds (files read with its date + still to read)
                 val count = if (unread != null) (allByDay[g.day] ?: 0) + ghosts else g.count
-                out.add(GridRow.Header(dayLabel(g.day), "· " + formatCount(count), present))
+                out.add(GridRow.Header(dayLabel(g.day), photosLabel(count), present))
                 var k = 0
                 var left = ghosts
                 while (k < present.size || left > 0) {
@@ -1086,7 +1255,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 }
             }
             for ((day, group) in shownByDay) if (day !in known) { // a day 0x9053 did not report (shot just now)
-                out.add(GridRow.Header(dayLabel(day), "· " + formatCount(group.size), group))
+                out.add(GridRow.Header(dayLabel(day), photosLabel(group.size), group))
                 for (k in group.indices step 3) out.add(GridRow.Tiles(group.subList(k, minOf(k + 3, group.size))))
             }
         }
@@ -1102,9 +1271,13 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             } else {
                 emptyList()
             }
-            val where = if (places.isEmpty()) "" else places.take(2).joinToString(", ") + (if (places.size > 2) "…" else "") + ", "
-            val sub = "· " + where + formatCount(group.size) + (if (where.isNotEmpty()) " foto" else "") +
-                (if (doneCount > 0 && filter != Filter.NEW) ", già scaricate $doneCount" else "")
+            val where = if (places.isEmpty()) "" else places.take(2).joinToString(", ") + (if (places.size > 2) "…" else "")
+            // "Oltrarno, Santo Spirito · 21 foto · 3 già sul telefono"
+            val sub = listOfNotNull(
+                where.ifEmpty { null },
+                photosLabel(group.size),
+                if (doneCount > 0 && filter != Filter.NEW) "$doneCount già sul telefono" else null,
+            ).joinToString(" · ")
             out.add(GridRow.Header(dayLabel(day), sub, group))
             for (k in group.indices step 3) out.add(GridRow.Tiles(group.subList(k, minOf(k + 3, group.size))))
             i = j
@@ -1200,7 +1373,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
 
     private fun updateChips() {
-        val all = TransferState.objects
+        val all = shownList
         val counts = mapOf(
             Filter.NEW to all.count { key(it) !in done },
             Filter.ALL to all.size,
@@ -1224,7 +1397,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     private fun updateBottom() {
         val st = TransferState
-        val selObjs = st.objects.filter { it.handle in selected }
+        val selObjs = shownList.filter { it.handle in selected }
+        val later = inCache
         val bytes = selObjs.sumOf { if (it.sizeOverflow()) 0L else it.size }
         // chosen files that the current filters hide are still downloaded: say so
         val shown = files.mapTo(HashSet()) { it.handle }
@@ -1237,11 +1411,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 else -> "${selObjs.size} selezionate"
             },
             selInfo = when {
-                selObjs.isEmpty() -> "Tieni premuta una foto per selezionarla"
+                selObjs.isEmpty() -> if (later) "Tocca le foto da scaricare" else "Tieni premuta una foto per selezionarla"
+                later && st.busy -> "Partono appena la camera è pronta"
+                later -> "Si scaricano quando colleghi la camera"
                 !st.sizesKnown -> "Dimensioni lette al download$hiddenNote"
                 else -> formatSize(bytes) + hiddenNote
             },
-            canDownload = selObjs.isNotEmpty() && st.connected, // during a batch the new one waits in the queue
+            canDownload = selObjs.isNotEmpty() && (st.connected || later), // during a batch the new one waits in the queue
+            later = later,
             // files not on the phone yet need the camera to fetch them first
             canUpload = selObjs.isNotEmpty() && (st.connected || selObjs.all { key(it) in done }),
             snack = if (selObjs.isEmpty()) uploadSnack else "",
@@ -1275,6 +1452,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             batch = st.batch,
             batchIndex = st.batchIndex,
             title = "${st.batchIndex} di ${st.batchCount}",
+            next = ImmichSync.settings(this).let { im ->
+                if (!im.configured || im.mode != ImmichSync.MODE_AUTO) ""
+                else if (im.wifiOnly) "Poi su Immich, appena il telefono è su un Wi-Fi con internet"
+                else "Poi su Immich, appena c'è la rete"
+            },
             bytes = "${formatSize(doneBytes)} di ${if (st.sizesKnown) "" else "circa "}${formatSize(total)}",
             progress = if (total > 0) (doneBytes * 1000 / total).toInt().coerceIn(0, 1000) else downloadUi.progress,
             speed = if (speed > 1.0) formatSize(speed.toLong()) + "/s" else "…",
@@ -1873,6 +2055,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         else -> Kind.OTHER
     }
 
+    private fun photosLabel(n: Int) = if (n == 1) "1 file" else "${formatCount(n)} file"
+
     private fun formatCount(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n)
 
     private fun formatSize(b: Long): String = when {
@@ -2006,6 +2190,12 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
      * ran behind the gallery ("Continua in background", "Carica") only gets the toast; a cancelled one nothing.
      */
     private fun onBatchEnded(b: BatchResult, wasVisible: Boolean) {
+        if (b.saved.isNotEmpty()) {
+            // "Ultima sessione" on the connect screen
+            val prefs = getSharedPreferences("fuji", MODE_PRIVATE)
+            prefs.edit().putLong("lastSessionAt", System.currentTimeMillis())
+                .putInt("lastSessionSaved", prefs.getInt("lastSessionSaved", 0) + b.saved.size).apply()
+        }
         if (b.cancelled) return
         val sec = (b.millis / 1000).coerceAtLeast(1)
         val raw = b.saved.any { kindOf(it) == Kind.RAW }
@@ -2085,7 +2275,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 resumeKeys = null
                 val handles = st.objects.filter { key(it) in keys }.map { it.handle }
                 if (handles.isEmpty()) {
-                    android.widget.Toast.makeText(this, "I file da riprendere non sono più sulla camera", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(this, "I file scelti non sono più sulla camera", android.widget.Toast.LENGTH_LONG).show()
                 } else {
                     downloadsHidden = false
                     startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, handles.toLongArray()) }
@@ -2246,6 +2436,64 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     private fun key(i: ObjectInfo) = "${i.filename}|${i.captureDate}"
 
+    // ------------------------------------------------------------------ saved gallery ("Dalla cache")
+
+    /** The listing saved at the last connection to the paired camera, newest first; null = none. */
+    private fun savedListing(): List<ObjectInfo>? {
+        val p = pairing() ?: return null
+        val k = "ble-" + p.address
+        if (k != cacheKey) { // read once per camera and connection: not on every state change
+            cacheKey = k
+            cache = TransferService.cachedListing(this, k)?.sortedByDescending { it.captureDate }?.takeIf { it.isNotEmpty() }
+        }
+        return cache
+    }
+
+    private fun openSavedGallery() {
+        if (savedListing() == null) return
+        selected.clear()
+        shownObjects = null
+        cacheBrowse = true
+        onChanged()
+    }
+
+    private fun leaveCache() {
+        cacheBrowse = false
+        selected.clear()
+        shownObjects = null
+        onChanged()
+    }
+
+    private fun updateCacheHeader() {
+        val st = TransferState
+        val connecting = st.busy && !st.connected
+        galleryTopUi = galleryTopUi.copy(
+            title = pairing()?.name?.ifEmpty { null } ?: "Camera",
+            info = "Dalla cache · ${formatCount(cache?.size ?: 0)} file",
+            cached = true,
+            banner = "",
+            working = false,
+            subtitle = "",
+            link = if (connecting) GalleryLink(
+                "Collego la camera…", "Passo ${st.connectStep.coerceIn(0, 3) + 1} di 4 · intanto puoi scegliere le foto",
+                attemptStart, "Annulla",
+            ) else GalleryLink("Camera non collegata", "Scegli le foto: si scaricano quando la colleghi", 0L, "Connetti"),
+        )
+    }
+
+    /** "Oggi, 18:42", "Ieri, 18:42", "3 nov, 18:42". */
+    private fun whenLabel(ms: Long): String {
+        val day = java.util.Calendar.getInstance().apply { timeInMillis = ms }
+        val today = java.util.Calendar.getInstance()
+        val time = java.text.SimpleDateFormat("HH:mm", Locale.ITALY).format(java.util.Date(ms))
+        fun sameDay(a: java.util.Calendar, b: java.util.Calendar) =
+            a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) && a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
+        if (sameDay(day, today)) return "Oggi, $time"
+        today.add(java.util.Calendar.DAY_OF_YEAR, -1)
+        if (sameDay(day, today)) return "Ieri, $time"
+        return java.text.SimpleDateFormat("d MMM", Locale.ITALY).format(java.util.Date(ms)) + ", " + time
+    }
+
     // ------------------------------------------------------------------ actions
 
     private fun startWifi() {
@@ -2286,6 +2534,23 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
 
     private fun downloadSelected() {
+        if (inCache) {
+            // chosen in the saved list: fetched once the camera is connected and its list read
+            val keys = shownList.filter { it.handle in selected }.map { key(it) }
+            if (keys.isEmpty()) return
+            resumeKeys = keys
+            if (TransferState.busy) resumeStep = 1 else {
+                resumeStep = 0
+                resumePosted = false
+            }
+            DebugLog.add("download dalla galleria salvata: ${keys.size} file, appena la camera è collegata")
+            android.widget.Toast.makeText(
+                this, if (keys.size == 1) "La foto parte appena la camera è pronta" else "Le ${keys.size} foto partono appena la camera è pronta",
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+            onChanged()
+            return
+        }
         val handles = TransferState.objects.filter { it.handle in selected }.map { it.handle }
         if (handles.isEmpty()) return
         downloadsHidden = false
@@ -2334,7 +2599,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     /** "Carica" in the selection bar: the selection closes and a message says what happens next, with Annulla. */
     private fun uploadSelected() {
-        val list = TransferState.objects.filter { it.handle in selected && key(it) !in immichDone }
+        val list = shownList.filter { it.handle in selected && key(it) !in immichDone }
         if (list.isEmpty()) {
             android.widget.Toast.makeText(this, "Sono già tutte su Immich", android.widget.Toast.LENGTH_SHORT).show()
             return

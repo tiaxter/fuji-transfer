@@ -75,7 +75,14 @@ data class GalleryTopUi(
     /** 0..1000 */
     val workProgress: Int = 0,
     val subtitle: String = "",
+    /** The files come from the listing saved at the last connection, not from the camera (hollow dot). */
+    val cached: Boolean = false,
+    /** The card over the saved gallery: the camera being connected, or not connected; null = none. */
+    val link: GalleryLink? = null,
 )
+
+/** "Collego la camera… 14 s" (counted from [startedAt], 0 = no counter) with its action ("Annulla", "Connetti"). */
+data class GalleryLink(val title: String, val sub: String, val startedAt: Long, val action: String)
 
 class GalleryTopActions(
     val onBack: () -> Unit,
@@ -92,6 +99,7 @@ class GalleryTopActions(
     val onFilter: (Int) -> Unit,
     val onFilm: () -> Unit = {},
     val onClearFilm: () -> Unit = {},
+    val onLink: () -> Unit = {},
 )
 
 @Composable
@@ -107,15 +115,23 @@ fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
             Column(Modifier.weight(1f).padding(start = 4.dp)) {
                 Text(ui.title, color = c.onSurface, style = type(22, 28), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.padding(end = 4.dp).size(8.dp).clip(CircleShape).background(c.primary))
-                    Text(ui.info, color = c.onSurfaceVariant, style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    // green = the camera's own list; hollow = the saved one
+                    Box(
+                        Modifier.padding(end = 6.dp).size(8.dp).clip(CircleShape)
+                            .then(if (ui.cached) Modifier.border(2.dp, c.outline, CircleShape) else Modifier.background(c.primary)),
+                    )
+                    Text(ui.info, color = c.onSurfaceVariant, style = type(13, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
-            IconButton(onClick = a.onSelectAll) {
+            Box(
+                Modifier.size(48.dp).clip(CircleShape).background(if (ui.allSelected) c.secondaryContainer else c.surfaceContainerHighest)
+                    .clickable(role = Role.Button, onClick = a.onSelectAll)
+                    .semantics { contentDescription = if (ui.allSelected) "Deseleziona tutto" else "Seleziona tutto" },
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
-                    painterResource(R.drawable.ic_select_all),
-                    contentDescription = if (ui.allSelected) "Deseleziona tutto" else "Seleziona tutto",
-                    tint = if (ui.allSelected) c.primary else c.onSurfaceVariant,
+                    painterResource(R.drawable.ic_select_all), null, Modifier.size(24.dp),
+                    tint = if (ui.allSelected) c.onSecondaryContainer else c.onSurface,
                 )
             }
             Box {
@@ -168,6 +184,9 @@ fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
             }
         }
 
+        // over the saved gallery: the connection being made (or the way to make one)
+        ui.link?.let { LinkCard(it, a.onLink) }
+
         // background work on the camera (list, positions): a quiet line with a thin bar
         if (ui.working) {
             Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 8.dp)) {
@@ -185,6 +204,29 @@ fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
                 color = c.onSurfaceVariant, style = type(12, 16),
             )
         }
+    }
+}
+
+@Composable
+private fun LinkCard(link: GalleryLink, onAction: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    val now = tickingNow()
+    Row(
+        Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp).fillMaxWidth().height(64.dp)
+            .clip(RoundedCornerShape(20.dp)).background(c.secondaryContainer).padding(start = 14.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (link.startedAt > 0) {
+            WavyBar(0, 100, c.primary, c.surfaceContainerHighest, Modifier.size(32.dp), indeterminate = true)
+        } else {
+            Icon(painterResource(R.drawable.ic_wifi_off), null, Modifier.size(24.dp), tint = c.onSecondaryContainer)
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+            val secs = if (link.startedAt > 0) " " + seconds((now - link.startedAt).coerceAtLeast(0)) else ""
+            Text(link.title + secs, color = c.onSecondaryContainer, style = type(14, 20, medium = true), maxLines = 1)
+            Text(link.sub, color = c.onSecondaryContainer, style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        FujiButton(link.action, onAction, kind = ButtonKind.Text, height = 48.dp)
     }
 }
 
@@ -248,10 +290,15 @@ data class GalleryBottomUi(
     val snackSub: String = "Partono col Wi‑Fi, anche ad app chiusa",
     /** A tip above the selection bar ("Tieni premuto e trascina…"), empty = none. */
     val hint: String = "",
+    /** The camera is not there yet: "Scarica" queues the files for when it is (clock instead of the arrow). */
+    val later: Boolean = false,
 )
 
 @Composable
-fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Unit, onUpload: () -> Unit, onUndo: () -> Unit) {
+fun GalleryBottom(
+    ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Unit, onUpload: () -> Unit, onUndo: () -> Unit,
+    onClear: () -> Unit = {},
+) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxWidth()) {
         if (ui.strip) {
@@ -305,13 +352,24 @@ fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Un
             // floating selection bar (Expressive): a pill with the count, then the joined Carica | Scarica pair
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 val pill = RoundedCornerShape(32.dp)
-                Column(
+                val any = ui.canDownload || ui.canUpload
+                Row(
                     Modifier.weight(1f).height(64.dp).shadow(3.dp, pill).background(c.primaryContainer, pill)
-                        .padding(start = 24.dp, end = 16.dp),
-                    verticalArrangement = Arrangement.Center,
+                        .padding(start = if (any) 8.dp else 24.dp, end = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(ui.selTitle, color = c.onSurface, style = type(16, 24, medium = true), maxLines = 1)
-                    Text(ui.selInfo, color = c.onSurfaceVariant, style = type(14, 20), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (any) {
+                        IconButton(onClick = onClear) {
+                            Icon(painterResource(R.drawable.ic_close), contentDescription = "Annulla selezione", tint = c.onPrimaryContainer)
+                        }
+                    }
+                    Column(Modifier.weight(1f).padding(start = if (any) 4.dp else 0.dp)) {
+                        Text(ui.selTitle, color = c.onPrimaryContainer, style = type(16, 22, medium = true), maxLines = 1)
+                        Text(
+                            ui.selInfo, color = c.onPrimaryContainer.copy(alpha = 0.85f), style = type(13, 18),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 Row(Modifier.padding(start = 8.dp)) {
                     ActionTile(
@@ -321,9 +379,10 @@ fun GalleryBottom(ui: GalleryBottomUi, onStrip: () -> Unit, onDownload: () -> Un
                     )
                     Box(Modifier.width(2.dp))
                     ActionTile(
-                        "Scarica", R.drawable.ic_download, first = false, enabled = ui.canDownload,
-                        container = c.primary, content = c.onPrimary,
-                        description = "Scarica sul telefono le foto selezionate", onClick = onDownload,
+                        if (ui.later) "Accoda" else "Scarica", if (ui.later) R.drawable.ic_clock else R.drawable.ic_download,
+                        first = false, enabled = ui.canDownload, container = c.primary, content = c.onPrimary,
+                        description = if (ui.later) "Scarica appena la camera è collegata" else "Scarica sul telefono le foto selezionate",
+                        onClick = onDownload,
                     )
                 }
             }
