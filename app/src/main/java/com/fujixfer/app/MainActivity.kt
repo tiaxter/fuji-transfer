@@ -417,6 +417,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         bindViews()
         seenBatchId = TransferState.lastBatch?.id ?: 0L
         setContent { FujiTheme { AppRoot() } }
+        onBackPressedDispatcher.addCallback(this, backCallback)
         // the first start explains the two permissions before Android asks; later the "Connetti" asks if needed
         val prefs = getSharedPreferences("fuji", MODE_PRIVATE)
         if (!prefs.getBoolean("permsShown", false) && (!hasBlePermissions() || !hasNotifPermission())) permsOpen = true
@@ -463,7 +464,17 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     }
 
     @Deprecated("Still called with targetSdk 35 when no OnBackInvokedCallback is registered")
-    override fun onBackPressed() {
+    /**
+     * Back (button or gesture), through the dispatcher so it also works with Android's gesture navigation: the
+     * topmost layer closes first, then each screen goes one step back. The app itself never closes on back: from
+     * the connect screen (or while connecting) it only goes to the background, like Home, keeping its state and
+     * any connection.
+     */
+    private val backCallback = object : androidx.activity.OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() = goBack()
+    }
+
+    private fun goBack() {
         val v = viewer
         if (v != null && v.showing) {
             v.requestClose() // the viewer closes into its grid cell
@@ -513,8 +524,30 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             clearSelection() // like Google Photos: back first drops the selection
             return
         }
-        @Suppress("DEPRECATION")
-        super.onBackPressed()
+        if (permsOpen) {
+            moveTaskToBack(true) // the first-start screen stays until "Continua"
+            return
+        }
+        if (cacheBrowse && !TransferState.connected) {
+            leaveCache() // the saved gallery: back to the connect (or connecting) screen
+            return
+        }
+        if (showGallery) {
+            confirmDisconnect() // as the arrow at the top of the gallery: asked first
+            return
+        }
+        if (showError) {
+            dismissedError = TransferState.status // as the error screen's arrow: back to the connect screen
+            onChanged()
+            return
+        }
+        if (showConnect && manualOpen) {
+            manualOpen = false
+            onChanged()
+            return
+        }
+        // connect screen, or a connection being made: the app goes to the background, nothing is cancelled
+        moveTaskToBack(true)
     }
 
     @Suppress("DEPRECATION")
