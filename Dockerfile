@@ -12,16 +12,6 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends unzip curl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# CA aziendale (se la rete intercetta il TLS): metti i file .crt in docker/certs/ (vedi docker/export-ca.sh).
-# Vanno nel truststore di sistema (curl) e in quello di Java (sdkmanager, Gradle).
-COPY docker/certs/ /usr/local/share/ca-certificates/extra/
-RUN update-ca-certificates \
- && for f in /usr/local/share/ca-certificates/extra/*.crt; do \
-      [ -f "$f" ] || continue; \
-      keytool -importcert -noprompt -trustcacerts -cacerts -storepass changeit \
-              -alias "extra-$(basename "$f" .crt)" -file "$f"; \
-    done
-
 RUN mkdir -p "${ANDROID_HOME}/cmdline-tools" \
  && curl -fsSL -o /tmp/cmdline-tools.zip \
       "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS}_latest.zip" \
