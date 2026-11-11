@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import android.app.Dialog
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
@@ -59,12 +60,14 @@ data class ViewerTopUi(
 @Composable
 fun ViewerBar(ui: ViewerTopUi, onBack: () -> Unit, onHd: () -> Unit, onSelect: () -> Unit, onInfo: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val originalCd = stringResource(R.string.cd_original)
+    val selectCd = stringResource(if (ui.selected) R.string.cd_selected_tap else R.string.cd_select_download)
     Row(
         Modifier.fillMaxWidth().height(64.dp).background(Color(0x73000000)).padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
-            Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = Color.White)
+            Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back), tint = Color.White)
         }
         Column(Modifier.weight(1f).padding(start = 4.dp)) {
             Text(ui.name, color = Color.White, style = type(16, 24, medium = true), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -74,16 +77,16 @@ fun ViewerBar(ui: ViewerTopUi, onBack: () -> Unit, onHd: () -> Unit, onSelect: (
             Box(
                 Modifier.padding(end = 4.dp).height(40.dp).clip(RoundedCornerShape(20.dp)).background(Color(0x33FFFFFF))
                     .clickable(role = Role.Button, onClick = onHd).padding(horizontal = 14.dp)
-                    .semantics { contentDescription = "Scarica la foto originale" },
+                    .semantics { contentDescription = originalCd },
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Originale", color = Color.White, style = type(14, 20, medium = true), maxLines = 1)
+                Text(stringResource(R.string.original), color = Color.White, style = type(14, 20, medium = true), maxLines = 1)
             }
         }
         // select this file for the download, as in the gallery: ring = not chosen, green check = chosen
         Box(
             Modifier.size(48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onSelect)
-                .semantics { contentDescription = if (ui.selected) "Selezionata, tocca per togliere" else "Seleziona per il download" },
+                .semantics { contentDescription = selectCd },
             contentAlignment = Alignment.Center,
         ) {
             if (ui.selected) {
@@ -97,13 +100,13 @@ fun ViewerBar(ui: ViewerTopUi, onBack: () -> Unit, onHd: () -> Unit, onSelect: (
             }
         }
         IconButton(onClick = onInfo) {
-            Icon(painterResource(R.drawable.ic_info), contentDescription = "Dettagli", tint = Color.White)
+            Icon(painterResource(R.drawable.ic_info), contentDescription = stringResource(R.string.details), tint = Color.White)
         }
     }
 }
 
 data class ViewerLoadUi(
-    val status: String = "Scarico l'originale…",
+    val status: String = "",
     val progressVisible: Boolean = true,
     /** 0..1000 */
     val progress: Int = 0,

@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import android.app.Dialog
 import android.location.Geocoder
 import android.view.ViewGroup
@@ -97,7 +99,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
- * "Filtra per luogo", as in the design (MapFilter): the photos with a position grouped into zones on an
+ * stringResource(R.string.map_title), as in the design (MapFilter): the photos with a position grouped into zones on an
  * OpenStreetMap map (MapLibre + OpenFreeMap); tap zones to select them (several at once), the places outside
  * the visible area as chips, the photos without a position as a switch, then "Mostra N foto".
  *
@@ -219,16 +221,15 @@ class MapScreen(
 
     /**
      * Groups the photos on screen into zones about 56 dp apart (closer ones merge), like the design's circles;
-     * the ones off screen into places of about 10 km for the "Fuori da questa zona" chips.
+     * the ones off screen into places of about 10 km for the stringResource(R.string.map_outside) chips.
      */
     private fun rebuildZones() {
         val m = map ?: return
         val pts = points()
         emptyNote = if (pts.isNotEmpty()) "" else if (TransferState.metaScanning) {
-            "Sto leggendo le posizioni dalle foto (${TransferState.metaDone} di ${TransferState.metaTotal})…"
+            activity.getString(R.string.map_reading, TransferState.metaDone, TransferState.metaTotal)
         } else {
-            "Nessuna foto con posizione. La X-M5 non ha un GPS: la posizione c'è solo nelle foto scattate " +
-                "mentre il telefono gliela mandava via Bluetooth."
+            activity.getString(R.string.map_no_gps)
         }
         // "on screen" = in the part of the map the sheet leaves visible
         val visibleBottom = (mapH - covered()).toFloat()
@@ -322,7 +323,7 @@ class MapScreen(
     /** Names of the zones and places fully selected, map first. */
     private fun pickedNames(): List<String> =
         (zones + outside).filter { it.keys.isNotEmpty() && selected.containsAll(it.keys) }
-            .map { nameOf(it).ifEmpty { "Zona" } }.distinct()
+            .map { nameOf(it).ifEmpty { activity.getString(R.string.map_zone) } }.distinct()
 
     private fun apply() {
         if (selected.isEmpty() && !noGps) {
@@ -339,7 +340,7 @@ class MapScreen(
         }
         val picked = pickedNames()
         val label = when {
-            picked.isEmpty() -> "Luogo · ${keys.size}"
+            picked.isEmpty() -> activity.getString(R.string.map_place_n, keys.size)
             picked.size <= 2 -> picked.joinToString(", ")
             else -> picked.take(2).joinToString(", ") + " +${picked.size - 2}"
         }
@@ -390,7 +391,7 @@ class MapScreen(
                 activity.runOnUiThread {
                     if (closed) return@runOnUiThread
                     if (a == null) {
-                        Toast.makeText(activity, "Luogo non trovato", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(activity, activity.getString(R.string.map_not_found), Toast.LENGTH_SHORT).show()
                     } else {
                         map?.animateCamera(CameraUpdateFactory.newLatLngZoom(LatLng(a.latitude, a.longitude), 12.0))
                     }
@@ -497,7 +498,7 @@ class MapScreen(
                     ) {
                         Icon(painterResource(R.drawable.ic_wifi_off), null, Modifier.size(20.dp), tint = c.onSecondaryContainer)
                         Text(
-                            "Senza internet la mappa non si carica. Le zone e le foto funzionano lo stesso.",
+                            stringResource(R.string.map_offline),
                             Modifier.padding(start = 10.dp), color = c.onSecondaryContainer, style = type(13, 18),
                         )
                     }
@@ -525,10 +526,10 @@ class MapScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { d.dismiss() }) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Chiudi", tint = c.onSurface)
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.close), tint = c.onSurface)
                 }
-                Text("Filtra per luogo", Modifier.weight(1f).padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
-                FujiButton("Azzera", {
+                Text(stringResource(R.string.map_title), Modifier.weight(1f).padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+                FujiButton(stringResource(R.string.reset), {
                     selected = emptySet()
                     noGps = false
                 }, kind = ButtonKind.Text, height = 40.dp)
@@ -585,8 +586,15 @@ class MapScreen(
         val fill = if (all) c.primary else if (some) c.primaryContainer else c.background
         val stroke = if (all) c.onPrimary else c.primary
         val text = if (all) c.onPrimary else if (some) c.onPrimaryContainer else c.primary
-        val what = if (z.splittable) "tocca per ingrandire, tieni premuto per sceglierle tutte" else "tocca per scegliere"
-        val description = "${nameOf(z).ifEmpty { "Zona" }}, $n foto, " + (if (all) "selezionata" else if (some) "in parte selezionata" else what)
+        val state = stringResource(
+            when {
+                all -> R.string.map_cd_selected
+                some -> R.string.map_cd_partly
+                z.splittable -> R.string.map_cd_split
+                else -> R.string.map_cd_pick
+            },
+        )
+        val description = nameOf(z).ifEmpty { stringResource(R.string.map_zone) } + ", " + pluralStringResource(R.plurals.n_photos, n, n) + ", " + state
         Box(
             Modifier.offset {
                 val p = zonePos[z.id]
@@ -648,7 +656,7 @@ class MapScreen(
                 }),
                 decorationBox = { inner ->
                     Box(contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text("Cerca un luogo", color = c.onSurfaceVariant, style = type(16, 24), maxLines = 1)
+                        if (query.isEmpty()) Text(stringResource(R.string.map_search), color = c.onSurfaceVariant, style = type(16, 24), maxLines = 1)
                         inner()
                     }
                 },
@@ -662,11 +670,11 @@ class MapScreen(
         val shape = RoundedCornerShape(16.dp)
         Column(modifier.padding(top = 84.dp, end = 16.dp).width(48.dp).clip(shape).background(c.surfaceContainerHigh)) {
             IconButton(onClick = { map?.animateCamera(CameraUpdateFactory.zoomIn()) }) {
-                Icon(painterResource(R.drawable.ic_plus), contentDescription = "Ingrandisci", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_plus), contentDescription = stringResource(R.string.zoom_in), tint = c.onSurface)
             }
             Box(Modifier.fillMaxWidth().height(1.dp).background(c.outlineVariant))
             IconButton(onClick = { map?.animateCamera(CameraUpdateFactory.zoomOut()) }) {
-                Icon(painterResource(R.drawable.ic_minus), contentDescription = "Riduci", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_minus), contentDescription = stringResource(R.string.zoom_out), tint = c.onSurface)
             }
         }
         Box(
@@ -677,7 +685,7 @@ class MapScreen(
                 },
             contentAlignment = Alignment.Center,
         ) {
-            Icon(painterResource(R.drawable.ic_fit_all), contentDescription = "Mostra tutte le foto con posizione", tint = c.onSurface)
+            Icon(painterResource(R.drawable.ic_fit_all), contentDescription = stringResource(R.string.map_fit_all), tint = c.onSurface)
         }
     }
 
@@ -699,17 +707,19 @@ class MapScreen(
         val noGpsCount = remember(zones, selected) { noGpsKeys().size }
         val count = selected.size + (if (noGps) noGpsCount else 0)
         val headline = when {
-            picked.isEmpty() && selected.isEmpty() -> "Tocca un cerchio per avvicinarti"
-            picked.isEmpty() -> "Zone scelte"
+            picked.isEmpty() && selected.isEmpty() -> stringResource(R.string.map_tap_circle)
+            picked.isEmpty() -> stringResource(R.string.map_zones_picked)
             picked.size <= 2 -> picked.joinToString(", ")
-            else -> picked.take(2).joinToString(", ") + " e altri ${picked.size - 2}"
+            else -> stringResource(R.string.map_and_others, picked.take(2).joinToString(", "), picked.size - 2)
         }
         val subline = when {
-            selected.isEmpty() && !noGps -> "Tieni premuto un cerchio per sceglierlo tutto"
-            else -> "$count foto" + (if (picked.size > 1) " in ${picked.size} zone" else "") +
-                (if (noGps) ", comprese quelle senza posizione" else "")
+            selected.isEmpty() && !noGps -> stringResource(R.string.map_hold_circle)
+            else -> pluralStringResource(R.plurals.n_photos, count, count) +
+                (if (picked.size > 1) stringResource(R.string.map_in_zones, picked.size) else "") +
+                (if (noGps) stringResource(R.string.map_with_no_gps) else "")
         }
-        val goText = if (selected.isEmpty() && !noGps) "Mostra tutte le foto" else "Mostra $count foto"
+        val sheetCd = stringResource(R.string.map_cd_sheet)
+        val goText = if (selected.isEmpty() && !noGps) stringResource(R.string.show_all_photos) else pluralStringResource(R.plurals.show_n_photos, count, count)
 
         // what goes out of sight fades with the sheet, so every position in between looks right
         fun hiddenFraction(): Float {
@@ -787,7 +797,7 @@ class MapScreen(
                 // header: handle, headline, summary
                 Column(
                     Modifier.fillMaxWidth().onSizeChanged { headerH = it.height }.padding(top = 12.dp, bottom = 2.dp)
-                        .semantics { contentDescription = "Selezione: tocca per aprire, comprimere o nascondere" },
+                        .semantics { contentDescription = sheetCd },
                 ) {
                     Box(Modifier.align(Alignment.CenterHorizontally).size(width = 32.dp, height = 4.dp).background(c.outline, RoundedCornerShape(2.dp)))
                     Text(
@@ -809,7 +819,7 @@ class MapScreen(
                 // details
                 Column(Modifier.onSizeChanged { bodyH = it.height }.graphicsLayer { alpha = bodyAlpha() }) {
                     Text(
-                        "Fuori da questa zona", Modifier.padding(start = 8.dp, top = 14.dp, end = 8.dp),
+                        stringResource(R.string.map_outside), Modifier.padding(start = 8.dp, top = 14.dp, end = 8.dp),
                         color = c.onSurfaceVariant, style = type(12, 16, medium = true),
                     )
                     Row(
@@ -819,14 +829,14 @@ class MapScreen(
                     ) {
                         if (outside.isEmpty()) {
                             Text(
-                                if (zones.isEmpty()) "Nessun luogo" else "Tutte le foto con posizione sono qui sopra",
+                                if (zones.isEmpty()) stringResource(R.string.map_no_place) else stringResource(R.string.map_all_above),
                                 Modifier.padding(start = 8.dp), color = c.onSurfaceVariant, style = type(14, 20), maxLines = 1,
                             )
                         } else {
                             for (z in outside) {
                                 val on = selected.containsAll(z.keys)
                                 FilterChip(
-                                    "${nameOf(z).ifEmpty { "Altro luogo" }} ${z.keys.size}", on,
+                                    "${nameOf(z).ifEmpty { stringResource(R.string.map_other_place) }} ${z.keys.size}", on,
                                     if (on) R.drawable.ic_check else null, null, onClick = { toggle(z.keys) },
                                 )
                             }
@@ -838,8 +848,8 @@ class MapScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
-                            Text("Includi foto senza posizione", color = c.onSurface, style = type(16, 24))
-                            Text("$noGpsCount foto, scattate senza geotag", color = c.onSurfaceVariant, style = type(14, 20))
+                            Text(stringResource(R.string.map_include_no_gps), color = c.onSurface, style = type(16, 24))
+                            Text(pluralStringResource(R.plurals.map_no_geotag, noGpsCount, noGpsCount), color = c.onSurfaceVariant, style = type(14, 20))
                         }
                         Switch(checked = noGps, onCheckedChange = { noGps = it }, modifier = Modifier.padding(start = 16.dp))
                     }

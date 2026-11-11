@@ -11,7 +11,12 @@ object TransferState {
         fun onChanged()
     }
 
-    @Volatile var status: String = "Non connesso"
+    /** The service's last status line, in the app's language ("" before the first). */
+    @Volatile var status: String = ""
+    /** [status] is a steady state (connected, listing, finished), not a passing step. */
+    @Volatile var statusSteady: Boolean = false
+    /** The message of the exception the last connection failed with (for the error screen). */
+    @Volatile var errorDetail: String = ""
     @Volatile var connected: Boolean = false
     @Volatile var busy: Boolean = false
     @Volatile var objects: List<ObjectInfo> = emptyList()

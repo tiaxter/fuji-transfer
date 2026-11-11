@@ -34,8 +34,8 @@ object BleScanner {
     fun looksLikeFuji(name: String?) = name != null && FUJI_NAME.containsMatchIn(name)
 
     private fun adapter(context: Context) = (context.getSystemService(BluetoothManager::class.java)?.adapter
-        ?: throw IOException("Questo telefono non ha il Bluetooth")).also {
-        if (!it.isEnabled) throw IOException("Attiva il Bluetooth del telefono e riprova")
+        ?: throw IOException(context.getString(R.string.ex_no_bluetooth))).also {
+        if (!it.isEnabled) throw IOException(context.getString(R.string.ex_bluetooth_off))
     }
 
     /**

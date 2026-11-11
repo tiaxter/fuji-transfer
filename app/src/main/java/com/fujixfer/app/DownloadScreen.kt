@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -101,9 +102,9 @@ fun DownloadScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(painterResource(R.drawable.ic_back), contentDescription = "Torna alla galleria", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back_to_gallery), tint = c.onSurface)
             }
-            Text("Download", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text(stringResource(R.string.download_title), Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
         }
 
         // summary card: files done of total, bytes, wavy bar, speed and time left
@@ -113,12 +114,13 @@ fun DownloadScreen(
                 .padding(start = 24.dp, top = 20.dp, end = 24.dp, bottom = 22.dp),
         ) {
             Row(Modifier.fillMaxWidth()) {
-                val n = ui.title.substringBefore(" di ")
-                val of = ui.title.substringAfter(" di ", "")
+                // "7 di 12", "7 of 12": the number first, the rest of the line smaller
+                val n = ui.title.takeWhile { it.isDigit() }
+                val of = ui.title.drop(n.length)
                 Text(
                     buildAnnotatedString {
                         withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(n) }
-                        if (of.isNotEmpty()) withStyle(SpanStyle(fontSize = 22.sp)) { append(" di $of") }
+                        if (of.isNotEmpty()) withStyle(SpanStyle(fontSize = 22.sp)) { append(of) }
                     },
                     Modifier.weight(1f).alignByBaseline(),
                     color = c.onPrimaryContainer, style = type(48, 52),
@@ -159,7 +161,7 @@ fun DownloadScreen(
                 }
                 Text(ui.retryNote, Modifier.weight(1f).padding(start = 12.dp), color = c.onTertiaryContainer, style = type(14, 20))
                 IconButton(onClick = { closedNote = ui.retryNote }) {
-                    Icon(painterResource(R.drawable.ic_close), contentDescription = "Chiudi avviso", tint = c.onTertiaryContainer)
+                    Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.close_notice), tint = c.onTertiaryContainer)
                 }
             }
         }
@@ -169,7 +171,7 @@ fun DownloadScreen(
             Modifier.fillMaxWidth().padding(start = 20.dp, top = 16.dp, end = 20.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("File", Modifier.weight(1f), color = c.onSurface, style = type(16, 22, medium = true))
+            Text(stringResource(R.string.files_header), Modifier.weight(1f), color = c.onSurface, style = type(16, 22, medium = true))
             Text(ui.counts, color = c.onSurfaceVariant, style = type(12, 16))
         }
 
@@ -191,8 +193,8 @@ fun DownloadScreen(
             Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            FujiButton("Annulla", onCancel, Modifier.weight(1f), kind = ButtonKind.Outlined, height = 56.dp, contentColor = c.onSurface)
-            FujiButton("Continua in background", onBackground, Modifier.weight(2f), kind = ButtonKind.Filled, height = 56.dp)
+            FujiButton(stringResource(R.string.cancel), onCancel, Modifier.weight(1f), kind = ButtonKind.Outlined, height = 56.dp, contentColor = c.onSurface)
+            FujiButton(stringResource(R.string.keep_in_background), onBackground, Modifier.weight(2f), kind = ButtonKind.Filled, height = 56.dp)
         }
     }
 }
@@ -216,19 +218,22 @@ private fun FileRow(info: ObjectInfo, current: Boolean, finished: Boolean, pct: 
             // a fixed 40 dp square: ring, number and check share the same centre
             finished -> Box(Modifier.padding(start = 8.dp).size(40.dp), contentAlignment = Alignment.Center) {
                 Icon(
-                    painterResource(R.drawable.ic_check), contentDescription = "Completato",
+                    painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.cd_done),
                     Modifier.size(28.dp).clip(CircleShape).background(c.primary).padding(6.dp), tint = c.onPrimary,
                 )
             }
-            current -> Box(
-                Modifier.padding(start = 8.dp).size(40.dp)
-                    .semantics { contentDescription = "In corso, $pct per cento" },
-                contentAlignment = Alignment.Center,
-            ) {
-                WavyBar(progress = pct, max = 100, color = c.primary, track = c.secondaryContainer, modifier = Modifier.size(40.dp))
-                Text(pct.toString(), color = c.primary, style = type(10, 12, medium = true))
+            current -> {
+                val cd = stringResource(R.string.cd_in_progress, pct)
+                Box(
+                    Modifier.padding(start = 8.dp).size(40.dp)
+                        .semantics { contentDescription = cd },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    WavyBar(progress = pct, max = 100, color = c.primary, track = c.secondaryContainer, modifier = Modifier.size(40.dp))
+                    Text(pct.toString(), color = c.primary, style = type(10, 12, medium = true))
+                }
             }
-            else -> Text("In coda", Modifier.padding(start = 8.dp), color = c.onSurfaceVariant, style = type(12, 16, medium = true), maxLines = 1)
+            else -> Text(stringResource(R.string.queued), Modifier.padding(start = 8.dp), color = c.onSurfaceVariant, style = type(12, 16, medium = true), maxLines = 1)
         }
     }
 }

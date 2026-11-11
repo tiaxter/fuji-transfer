@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -48,7 +50,7 @@ internal fun ScreenBar(title: String, onBack: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) {
-            Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = c.onSurface)
+            Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back), tint = c.onSurface)
         }
         if (title.isNotEmpty()) Text(title, Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
     }
@@ -94,7 +96,7 @@ class SettingGroup(val title: String, val rows: List<SettingRow>)
 fun SettingsScreen(groups: List<SettingGroup>, onBack: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Column(Modifier.fillMaxSize()) {
-        ScreenBar("Impostazioni", onBack)
+        ScreenBar(stringResource(R.string.cd_settings), onBack)
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
                 .padding(start = 16.dp, end = 16.dp, bottom = 24.dp),
@@ -149,7 +151,7 @@ private fun SettingsRowView(r: SettingRow, shape: RoundedCornerShape) {
 // ------------------------------------------------------------------ permissions (first start)
 
 /**
- * "Prima di collegare la camera": the nearby-devices permission (needed) and notifications (optional), each with
+ * stringResource(R.string.perm_title): the nearby-devices permission (needed) and notifications (optional), each with
  * its own "Consenti". [near]/[notif] are the permissions' state now.
  */
 @Composable
@@ -162,34 +164,34 @@ fun PermissionsScreen(near: Boolean, notif: Boolean, onNear: () -> Unit, onNotif
         ) {
             Box(Modifier.padding(start = 4.dp)) { BigCircle(R.drawable.ic_camera, c.primaryContainer, c.onPrimaryContainer) }
             Text(
-                "Prima di collegare la camera", Modifier.padding(start = 4.dp, top = 24.dp, end = 4.dp, bottom = 8.dp),
+                stringResource(R.string.perm_title), Modifier.padding(start = 4.dp, top = 24.dp, end = 4.dp, bottom = 8.dp),
                 color = c.onSurface, style = type(28, 36, medium = true),
             )
             Text(
-                "Servono due permessi. Puoi cambiarli quando vuoi dalle impostazioni di Android.",
+                stringResource(R.string.perm_body),
                 Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(16, 24),
             )
             Column(Modifier.padding(top = 28.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 PermissionRow(
-                    R.drawable.ic_bluetooth, "Dispositivi nelle vicinanze",
-                    "Per trovare la camera via Bluetooth e collegarti al suo Wi‑Fi.",
+                    R.drawable.ic_bluetooth, stringResource(R.string.perm_near),
+                    stringResource(R.string.perm_near_sub),
                     c.secondaryContainer, c.onSecondaryContainer, near, onNear, groupShape(0, 2, 28.dp, 8.dp),
                 )
                 PermissionRow(
-                    R.drawable.ic_bell, "Notifiche", "Per mostrarti i download che vanno avanti a schermo spento.",
+                    R.drawable.ic_bell, stringResource(R.string.perm_notif), stringResource(R.string.perm_notif_sub),
                     c.tertiaryContainer, c.onTertiaryContainer, notif, onNotif, groupShape(1, 2, 28.dp, 8.dp),
                 )
             }
             Text(
-                "Le notifiche sono facoltative: senza, i download in background non si vedono.",
+                stringResource(R.string.perm_notif_note),
                 Modifier.padding(start = 8.dp, top = 14.dp, end = 8.dp), color = c.onSurfaceVariant, style = type(13, 18),
             )
         }
-        // "Continua" looks off until the nearby-devices permission is there, but still lets the user go on:
+        // stringResource(R.string.continue_) looks off until the nearby-devices permission is there, but still lets the user go on:
         // the permission is asked again at the first "Connetti"
         Box(Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp)) {
             FujiButton(
-                "Continua", onContinue, Modifier.fillMaxWidth(), kind = if (near) ButtonKind.Filled else ButtonKind.Tonal,
+                stringResource(R.string.continue_), onContinue, Modifier.fillMaxWidth(), kind = if (near) ButtonKind.Filled else ButtonKind.Tonal,
                 height = 56.dp, contentColor = if (near) null else c.onSurfaceVariant,
             )
         }
@@ -201,6 +203,7 @@ private fun PermissionRow(
     icon: Int, title: String, sub: String, iconBg: Color, iconFg: Color, granted: Boolean, onAsk: () -> Unit, shape: RoundedCornerShape,
 ) {
     val c = MaterialTheme.colorScheme
+    val description = stringResource(if (granted) R.string.perm_cd_granted else R.string.perm_cd_ask, title)
     Row(
         Modifier.fillMaxWidth().clip(shape).background(c.surfaceContainer).padding(start = 16.dp, top = 14.dp, end = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -215,11 +218,11 @@ private fun PermissionRow(
         Box(
             Modifier.height(40.dp).clip(RoundedCornerShape(20.dp)).background(if (granted) c.primaryContainer else c.primary)
                 .clickable(enabled = !granted, role = Role.Button, onClick = onAsk).padding(horizontal = 16.dp)
-                .semantics { contentDescription = title + if (granted) ", consentito" else ", tocca per consentire" },
+                .semantics { contentDescription = description },
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (granted) "Consentito" else "Consenti", color = if (granted) c.onPrimaryContainer else c.onPrimary,
+                if (granted) stringResource(R.string.allowed) else stringResource(R.string.allow), color = if (granted) c.onPrimaryContainer else c.onPrimary,
                 style = type(14, 20, medium = true),
             )
         }
@@ -228,7 +231,7 @@ private fun PermissionRow(
 
 // ------------------------------------------------------------------ battery
 
-/** "Lascia lavorare l'app a schermo spento": the battery exemption, explained before Android's own dialog. */
+/** stringResource(R.string.battery_title): the battery exemption, explained before Android's own dialog. */
 @Composable
 fun BatteryScreen(onAllow: () -> Unit, onLater: () -> Unit) {
     val c = MaterialTheme.colorScheme
@@ -237,21 +240,20 @@ fun BatteryScreen(onAllow: () -> Unit, onLater: () -> Unit) {
         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp)) {
             Box(Modifier.padding(start = 4.dp)) { BigCircle(R.drawable.ic_battery, c.tertiaryContainer, c.onTertiaryContainer) }
             Text(
-                "Lascia lavorare l'app a schermo spento", Modifier.padding(start = 4.dp, top = 20.dp, end = 4.dp, bottom = 8.dp),
+                stringResource(R.string.battery_title), Modifier.padding(start = 4.dp, top = 20.dp, end = 4.dp, bottom = 8.dp),
                 color = c.onSurface, style = type(26, 34, medium = true),
             )
             Text(
-                "Su alcuni telefoni, quando lo schermo si spegne, Android può fermare la connessione dell'app con la camera. " +
-                    "Togliere il limite di batteria può aiutare i download a finire.",
+                stringResource(R.string.battery_body),
                 Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(16, 24),
             )
             Column(
                 Modifier.padding(top = 20.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             ) {
-                BatteryPoint(R.drawable.ic_check, "Più possibilità di arrivare in fondo", "Il download può continuare anche con lo schermo spento.")
-                BatteryPoint(R.drawable.ic_clock, "Solo quando serve", "L'app lavora in background solo per i download e per gli invii a Immich.")
-                BatteryPoint(R.drawable.ic_settings, "Lo cambi quando vuoi", "Da Impostazioni › Batteria, oppure dalle impostazioni di Android.")
+                BatteryPoint(R.drawable.ic_check, stringResource(R.string.battery_p1), stringResource(R.string.battery_p1_sub))
+                BatteryPoint(R.drawable.ic_clock, stringResource(R.string.battery_p2), stringResource(R.string.battery_p2_sub))
+                BatteryPoint(R.drawable.ic_settings, stringResource(R.string.battery_p3), stringResource(R.string.battery_p3_sub))
             }
             Row(
                 Modifier.padding(top = 10.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
@@ -260,9 +262,9 @@ fun BatteryScreen(onAllow: () -> Unit, onLater: () -> Unit) {
                 Icon(painterResource(R.drawable.ic_info), null, Modifier.padding(top = 1.dp).size(22.dp), tint = c.onSurfaceVariant)
                 Text(
                     buildAnnotatedString {
-                        append("Se la camera cade lo stesso, su alcuni telefoni (per esempio OPPO) c'è un'impostazione in più: ")
+                        append(stringResource(R.string.battery_oppo_before))
                         withStyle(SpanStyle(fontWeight = FontWeight.Medium, color = c.onSurface)) {
-                            append("Impostazioni › Batteria › Consenti attività in background")
+                            append(stringResource(R.string.battery_oppo_path))
                         }
                         append(".")
                     },
@@ -274,9 +276,9 @@ fun BatteryScreen(onAllow: () -> Unit, onLater: () -> Unit) {
             Modifier.fillMaxWidth().padding(start = 16.dp, top = 12.dp, end = 16.dp, bottom = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            FujiButton("Consenti", onAllow, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, height = 56.dp)
-            FujiButton("Non ora", onLater, Modifier.padding(top = 4.dp).fillMaxWidth(), kind = ButtonKind.Text)
-            Text("Android chiederà una conferma.", color = c.onSurfaceVariant, style = type(13, 18))
+            FujiButton(stringResource(R.string.allow), onAllow, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, height = 56.dp)
+            FujiButton(stringResource(R.string.not_now), onLater, Modifier.padding(top = 4.dp).fillMaxWidth(), kind = ButtonKind.Text)
+            Text(stringResource(R.string.android_confirms), color = c.onSurfaceVariant, style = type(13, 18))
         }
     }
 }
@@ -298,11 +300,11 @@ private fun BatteryPoint(icon: Int, title: String, sub: String) {
 // ------------------------------------------------------------------ empty gallery
 
 /**
- * Nothing to show in the gallery: every file is on the phone already ([cardEmpty] false: "Mostra tutte le foto"),
+ * Nothing to show in the gallery: every file is on the phone already ([cardEmpty] false: stringResource(R.string.show_all_photos)),
  * or the card holds nothing.
  */
 @Composable
-fun EmptyGallery(cardEmpty: Boolean, total: String, onShowAll: () -> Unit, onDisconnect: () -> Unit) {
+fun EmptyGallery(cardEmpty: Boolean, count: Int, onShowAll: () -> Unit, onDisconnect: () -> Unit) {
     val c = MaterialTheme.colorScheme
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(start = 32.dp, top = 48.dp, end = 32.dp, bottom = 64.dp),
@@ -311,17 +313,17 @@ fun EmptyGallery(cardEmpty: Boolean, total: String, onShowAll: () -> Unit, onDis
     ) {
         BigCircle(if (cardEmpty) R.drawable.ic_sd_card else R.drawable.ic_photos_done, c.primaryContainer, c.onPrimaryContainer, 128.dp)
         Text(
-            if (cardEmpty) "La scheda è vuota" else "Nessuna foto nuova", Modifier.padding(top = 8.dp),
+            if (cardEmpty) stringResource(R.string.empty_card) else stringResource(R.string.empty_nothing_new), Modifier.padding(top = 8.dp),
             color = c.onSurface, textAlign = TextAlign.Center, style = type(24, 32, medium = true),
         )
         Text(
-            if (cardEmpty) "La camera non ha foto né video. Scattane qualcuna e ricollegati."
-            else "Tutti i $total file della camera sono già sul telefono. Per rivederli usa i filtri o mostra l'elenco completo.",
+            if (cardEmpty) stringResource(R.string.empty_card_body)
+            else pluralStringResource(R.plurals.empty_nothing_new_body, count, java.text.NumberFormat.getIntegerInstance().format(count)),
             color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(16, 24),
         )
         Column(Modifier.padding(top = 12.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (!cardEmpty) FujiButton("Mostra tutte le foto", onShowAll, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, height = 56.dp)
-            FujiButton("Scollega", onDisconnect, Modifier.fillMaxWidth(), kind = ButtonKind.Text)
+            if (!cardEmpty) FujiButton(stringResource(R.string.show_all_photos), onShowAll, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, height = 56.dp)
+            FujiButton(stringResource(R.string.disconnect_short), onDisconnect, Modifier.fillMaxWidth(), kind = ButtonKind.Text)
         }
     }
 }
@@ -334,6 +336,7 @@ class LowStorageInfo(val need: String, val free: String, val fitCount: Int, val 
 @Composable
 fun LowStorageDialog(info: LowStorageInfo, onFirst: () -> Unit, onFree: () -> Unit, onCancel: () -> Unit) {
     val c = MaterialTheme.colorScheme
+    val lowTitle = stringResource(R.string.low_title)
     Box(
         Modifier.fillMaxSize().background(Color(0x80000000)).clickable(onClick = onCancel, indication = null,
             interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }),
@@ -342,14 +345,14 @@ fun LowStorageDialog(info: LowStorageInfo, onFirst: () -> Unit, onFree: () -> Un
         Column(
             Modifier.padding(16.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainerHighest)
                 .clickable(enabled = false) {}.padding(start = 20.dp, top = 24.dp, end = 20.dp, bottom = 16.dp)
-                .semantics { contentDescription = "Spazio insufficiente sul telefono" },
+                .semantics { contentDescription = lowTitle },
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             BigCircle(R.drawable.ic_phone, c.errorContainer, c.onErrorContainer, 56.dp)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Spazio insufficiente sul telefono", color = c.onSurface, style = type(22, 28, medium = true))
+                Text(stringResource(R.string.low_title), color = c.onSurface, style = type(22, 28, medium = true))
                 Text(
-                    "Servono ${info.need} e ne restano ${info.free}. Non ho cancellato né toccato niente.",
+                    stringResource(R.string.low_body, info.need, info.free),
                     color = c.onSurfaceVariant, style = type(14, 20),
                 )
             }
@@ -358,15 +361,15 @@ fun LowStorageDialog(info: LowStorageInfo, onFirst: () -> Unit, onFree: () -> Un
                 var k = 0
                 if (info.fitCount > 0) {
                     DialogChoice(
-                        if (info.fitCount == 1) "Scarica solo il primo file · ${info.fitSize}" else "Scarica solo i primi ${info.fitCount} file · ${info.fitSize}",
+                        pluralStringResource(R.plurals.low_first, info.fitCount, info.fitCount, info.fitSize),
                         c.primary, c.onPrimary, groupShape(k++, n, 28.dp, 8.dp), onFirst,
                     )
                 }
-                DialogChoice("Libera spazio", c.secondaryContainer, c.onSecondaryContainer, groupShape(k++, n, 28.dp, 8.dp), onFree)
-                DialogChoice("Annulla il download", c.surface, c.onSurface, groupShape(k, n, 28.dp, 8.dp), onCancel)
+                DialogChoice(stringResource(R.string.low_free), c.secondaryContainer, c.onSecondaryContainer, groupShape(k++, n, 28.dp, 8.dp), onFree)
+                DialogChoice(stringResource(R.string.low_cancel), c.surface, c.onSurface, groupShape(k, n, 28.dp, 8.dp), onCancel)
             }
             Text(
-                "«Libera spazio» apre la memoria di Android: poi torni qui e riprovi.", Modifier.fillMaxWidth(),
+                stringResource(R.string.low_note), Modifier.fillMaxWidth(),
                 color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(13, 18),
             )
         }
@@ -386,7 +389,7 @@ private fun DialogChoice(text: String, bg: Color, fg: Color, shape: RoundedCorne
 
 // ------------------------------------------------------------------ video the phone cannot play
 
-/** "Il telefono non lo riproduce bene": what the video is, why it does not play, and the two ways on. */
+/** stringResource(R.string.video_title): what the video is, why it does not play, and the two ways on. */
 @Composable
 fun VideoErrorPanel(what: String, why: String, onRetry: () -> Unit, onDownload: (() -> Unit)?) {
     val c = MaterialTheme.colorScheme
@@ -400,19 +403,19 @@ fun VideoErrorPanel(what: String, why: String, onRetry: () -> Unit, onDownload: 
                 Icon(painterResource(R.drawable.ic_play), null, Modifier.size(22.dp), tint = c.onTertiaryContainer)
             }
             Column(Modifier.padding(start = 14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Il telefono non lo riproduce bene", color = c.onSurface, style = type(20, 26, medium = true))
+                Text(stringResource(R.string.video_title), color = c.onSurface, style = type(20, 26, medium = true))
                 Text(what, color = c.onSurfaceVariant, style = type(14, 20))
             }
         }
         Text(why, Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(14, 20))
         Row(Modifier.padding(top = 4.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             GroupButton(
-                "Prova lo stesso", first = true, container = c.secondaryContainer, content = c.onSecondaryContainer,
+                stringResource(R.string.video_retry), first = true, container = c.secondaryContainer, content = c.onSecondaryContainer,
                 onClick = onRetry, modifier = Modifier.weight(1f), height = 56.dp, textSize = 14,
             )
             if (onDownload != null) {
                 GroupButton(
-                    "Scarica il video", first = false, container = c.primary, content = c.onPrimary,
+                    stringResource(R.string.video_download), first = false, container = c.primary, content = c.onPrimary,
                     onClick = onDownload, modifier = Modifier.weight(1f), icon = R.drawable.ic_download, height = 56.dp, textSize = 14,
                 )
             }

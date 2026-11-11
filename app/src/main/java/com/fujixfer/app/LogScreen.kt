@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -53,13 +54,13 @@ import java.util.Date
 import java.util.Locale
 
 /** The chips of the screen: all the lines, one kind, or only the errors. */
-private enum class LogFilter(val label: String, val kind: LogKind?, val errors: Boolean) {
-    ALL("Tutto", null, false),
-    CAMERA("Camera", LogKind.CAMERA, false),
-    WIFI("Wi-Fi", LogKind.WIFI, false),
-    IMMICH("Immich", LogKind.IMMICH, false),
-    APP("App", LogKind.APP, false),
-    ERRORS("Errori", null, true),
+private enum class LogFilter(val label: Int, val kind: LogKind?, val errors: Boolean) {
+    ALL(R.string.log_all, null, false),
+    CAMERA(R.string.camera_label, LogKind.CAMERA, false),
+    WIFI(R.string.tab_wifi, LogKind.WIFI, false),
+    IMMICH(R.string.tile_immich, LogKind.IMMICH, false),
+    APP(R.string.log_app, LogKind.APP, false),
+    ERRORS(R.string.log_errors, null, true),
 }
 
 /** Lines drawn at once, and lines "Copia" puts on the clipboard (the newest ones). */
@@ -71,27 +72,27 @@ private sealed class LogItem {
     class Line(val row: LogRow) : LogItem()
 }
 
-private fun dayLabel(ts: Long): String {
+private fun dayLabel(ctx: android.content.Context, ts: Long): String {
     val day = Calendar.getInstance().apply { timeInMillis = ts }
     val today = Calendar.getInstance()
     fun same(a: Calendar, b: Calendar) = a.get(Calendar.YEAR) == b.get(Calendar.YEAR) && a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
     val yesterday = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
     return when {
-        same(day, today) -> "Oggi"
-        same(day, yesterday) -> "Ieri"
-        else -> SimpleDateFormat("EEEE d MMMM", Locale.ITALIAN).format(Date(ts)).replaceFirstChar { it.uppercase() }
+        same(day, today) -> ctx.getString(R.string.today)
+        same(day, yesterday) -> ctx.getString(R.string.yesterday)
+        else -> SimpleDateFormat("EEEE d MMMM", Locale.getDefault()).format(Date(ts)).replaceFirstChar { it.uppercase() }
     }
 }
 
 /** Day headers only when the lines on screen span more than one day (the table keeps up to two weeks). */
-private fun withDays(rows: List<LogRow>): List<LogItem> {
+private fun withDays(ctx: android.content.Context, rows: List<LogRow>): List<LogItem> {
     if (rows.isEmpty()) return emptyList()
-    val first = dayLabel(rows.first().ts)
-    if (dayLabel(rows.last().ts) == first) return rows.map { LogItem.Line(it) }
+    val first = dayLabel(ctx, rows.first().ts)
+    if (dayLabel(ctx, rows.last().ts) == first) return rows.map { LogItem.Line(it) }
     val out = ArrayList<LogItem>(rows.size + 8)
     var last = ""
     for (r in rows) {
-        val d = dayLabel(r.ts)
+        val d = dayLabel(ctx, r.ts)
         if (d != last) {
             out.add(LogItem.Day(d))
             last = d
@@ -122,7 +123,8 @@ fun LogScreen(onBack: () -> Unit, onCopy: (String) -> Unit, onShare: () -> Unit,
     var loaded by remember { mutableStateOf(false) }
     var follow by remember { mutableStateOf(true) }
     val list = rememberLazyListState()
-    val shown = remember(rows) { withDays(rows) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val shown = remember(rows) { withDays(ctx, rows) }
     val timeFmt = remember { SimpleDateFormat("HH:mm:ss.SSS", Locale.ROOT) }
 
     // the table is read off the main thread, again each time DebugLog says new lines arrived
@@ -150,15 +152,15 @@ fun LogScreen(onBack: () -> Unit, onCopy: (String) -> Unit, onShare: () -> Unit,
         // top bar: back, title, the bin
         Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back), tint = c.onSurface)
             }
-            Text("Registro tecnico", Modifier.weight(1f).padding(start = 4.dp), color = c.onSurface, style = type(22, 28), maxLines = 1)
+            Text(stringResource(R.string.cd_log), Modifier.weight(1f).padding(start = 4.dp), color = c.onSurface, style = type(22, 28), maxLines = 1)
             Box(
                 Modifier.size(48.dp).clip(CircleShape).background(c.surfaceContainerHighest)
                     .clickable(role = Role.Button, onClick = onClear),
                 contentAlignment = Alignment.Center,
             ) {
-                Icon(painterResource(R.drawable.ic_delete), contentDescription = "Svuota il registro", tint = c.onSurfaceVariant)
+                Icon(painterResource(R.drawable.ic_delete), contentDescription = stringResource(R.string.log_clear), tint = c.onSurfaceVariant)
             }
         }
 
@@ -170,7 +172,7 @@ fun LogScreen(onBack: () -> Unit, onCopy: (String) -> Unit, onShare: () -> Unit,
             for (f in LogFilter.entries) {
                 val on = f == filter
                 FilterChip(
-                    f.label, on, if (on) R.drawable.ic_check else null, null,
+                    stringResource(f.label), on, if (on) R.drawable.ic_check else null, null,
                     onClick = {
                         if (!on) {
                             filter = f
@@ -185,8 +187,8 @@ fun LogScreen(onBack: () -> Unit, onCopy: (String) -> Unit, onShare: () -> Unit,
         Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp).clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)) {
             if (loaded && shown.isEmpty()) {
                 Text(
-                    if (filter == LogFilter.ALL) "Il registro è vuoto: prova a connetterti, poi riaprilo."
-                    else "Nessuna riga in «${filter.label}».",
+                    if (filter == LogFilter.ALL) stringResource(R.string.log_empty)
+                    else stringResource(R.string.log_empty_filter, stringResource(filter.label)),
                     Modifier.align(Alignment.Center).padding(32.dp), color = c.onSurfaceVariant, textAlign = TextAlign.Center,
                     style = type(14, 20),
                 )
@@ -210,7 +212,7 @@ fun LogScreen(onBack: () -> Unit, onCopy: (String) -> Unit, onShare: () -> Unit,
         // copy what is shown, share everything
         Row(Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             GroupButton(
-                "Copia", true, c.secondaryContainer, c.onSecondaryContainer,
+                stringResource(R.string.copy), true, c.secondaryContainer, c.onSecondaryContainer,
                 onClick = {
                     scope.launch {
                         val all = withContext(Dispatchers.IO) { DebugLog.rows(filter.kind, filter.errors, COPIED) }
@@ -220,7 +222,7 @@ fun LogScreen(onBack: () -> Unit, onCopy: (String) -> Unit, onShare: () -> Unit,
                 modifier = Modifier.weight(1f), enabled = rows.isNotEmpty(), icon = R.drawable.ic_copy,
             )
             GroupButton(
-                "Condividi", false, c.primary, c.onPrimary, onClick = onShare,
+                stringResource(R.string.share), false, c.primary, c.onPrimary, onClick = onShare,
                 modifier = Modifier.weight(1f), icon = R.drawable.ic_share,
             )
         }

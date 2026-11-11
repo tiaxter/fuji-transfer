@@ -1,7 +1,7 @@
 # Fuji Transfer — contesto per nuove chat
 
 App Android per scaricare foto e video da una Fujifilm X-M5 via Bluetooth → Wi-Fi (come XApp) o via USB.
-Telefono di prova: OPPO PME110, Android 16 (API 36). Interfaccia e log in italiano.
+Telefono di prova: OPPO PME110, Android 16 (API 36). Interfaccia in inglese e italiano (risorse `strings.xml`, vedi README › Translations); registro tecnico in italiano.
 
 ## Dove sta il codice
 - Sul Mac: `~/Projects/fuji-transfer` (la chat deve essere collegata al computer).

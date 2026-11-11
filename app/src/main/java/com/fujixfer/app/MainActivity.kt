@@ -275,7 +275,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             Kind.PHOTO -> {
                 val film = TransferState.meta[MetaStore.key(i.filename, i.captureDate)]?.film
                 if (film != null) {
-                    badge = film
+                    badge = Films.label(this, film)
                     badgeIcon = R.drawable.ic_film
                 }
             }
@@ -290,11 +290,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             immichQueued = key(i) in immichQueued,
             badge = badge,
             badgeIcon = badgeIcon,
-            placeholder = if (missing) kindOf(i).label else "",
+            placeholder = if (missing) getString(kindOf(i).label) else "",
             loading = bmp == null && !missing && TransferState.connected,
             want = bmp == null && !missing && inCache, // offline: the thumbnails already on disk
-            description = i.filename + (if (sel) ", selezionata" else "") + (if (isDone) ", sul telefono" else "") +
-                (if (key(i) in immichQueued) ", in coda per Immich" else if (key(i) in immichDone) ", su Immich" else ""),
+            description = i.filename + (if (sel) getString(R.string.cd_tile_selected) else "") + (if (isDone) getString(R.string.cd_tile_on_phone) else "") +
+                (if (key(i) in immichQueued) getString(R.string.cd_tile_queued) else if (key(i) in immichDone) getString(R.string.cd_tile_on_immich) else ""),
         )
     }
 
@@ -381,12 +381,12 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private fun rowMeta(info: ObjectInfo, current: Boolean, finished: Boolean): String {
         val st = TransferState
         val size = when {
-            !current && !finished && !st.sizesKnown -> "dimensione al download" // still the listing's placeholder
+            !current && !finished && !st.sizesKnown -> getString(R.string.size_at_download) // still the listing's placeholder
             info.sizeOverflow() -> "≥ 4 GB"
             else -> formatSize(info.size)
         }
         return when {
-            current && st.progressTotal > 0 -> "${formatSize(st.progressDone)} di ${formatSize(st.progressTotal)}"
+            current && st.progressTotal > 0 -> getString(R.string.x_of_y, formatSize(st.progressDone), formatSize(st.progressTotal))
             kindOf(info) == Kind.RAW -> "$size · RAW"
             else -> size
         }
@@ -403,7 +403,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 startUsb(device)
             } else {
                 TransferState.statusIsError = true
-                TransferState.status = "Permesso USB negato"
+                TransferState.status = getString(R.string.usb_denied)
                 TransferState.publish()
             }
         }
@@ -458,7 +458,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val pct = if (total > 0) (doneBytes * 100 / total).toInt().coerceIn(0, 100) else 0
         galleryBottomUi = galleryBottomUi.copy(
             stripPercent = pct,
-            stripTitle = "Download ${st.batchIndex} di ${st.batchCount}",
+            stripTitle = getString(R.string.download_n_of_m, st.batchIndex, st.batchCount),
             stripSub = st.progressName,
         )
     }
@@ -740,7 +740,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         if (emptyKind != 0) {
                             androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().background(c.background)) {
                                 EmptyGallery(
-                                    cardEmpty = emptyKind == 2, total = formatCount(TransferState.objects.size),
+                                    cardEmpty = emptyKind == 2, count = TransferState.objects.size,
                                     onShowAll = {
                                         filter = Filter.ALL
                                         rebuildRows()
@@ -957,9 +957,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             val min = ((System.currentTimeMillis() - connectedAtMs) / 60_000).coerceAtLeast(0)
             val usb = st.connectionLabel == "USB"
             disconnectInfo = DisconnectInfo(
-                camera = st.cameraName.ifEmpty { "camera" },
-                since = (if (connectedAtMs == 0L) "Collegata" else if (min < 1) "Collegata da meno di un minuto"
-                else "Collegata da $min min") + " · " + (if (usb) "USB" else "Wi‑Fi"),
+                camera = st.cameraName.ifEmpty { getString(R.string.camera_lower) },
+                since = (if (connectedAtMs == 0L) getString(R.string.since_connected) else if (min < 1) getString(R.string.since_under_minute)
+                else getString(R.string.since_min, min)) + " · " + (if (usb) "USB" else "Wi‑Fi"),
                 usb = usb,
                 immichQueued = if (ImmichSync.settings(this).configured) immichQueued.size else 0,
                 wifiOnly = ImmichSync.settings(this).wifiOnly,
@@ -967,12 +967,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             return
         }
         appDialog = AppDialog.Confirm(
-            title = if (downloading) "Interrompere i download?" else "Disconnettere la camera?",
-            message = if (downloading) "Mancano ${(st.batchCount - st.batchIndex + 1).coerceAtLeast(1)} file. " +
-                "Quelli già scaricati restano nel telefono."
-            else "Per tornare alla galleria dovrai collegarti di nuovo.",
-            confirm = if (downloading) "Interrompi" else "Disconnetti",
-            dismiss = if (downloading) "Continua" else "Resta",
+            title = getString(if (downloading) R.string.dlg_stop_title else R.string.dlg_disconnect_title),
+            message = if (downloading) getString(R.string.dlg_stop_body, (st.batchCount - st.batchIndex + 1).coerceAtLeast(1))
+            else getString(R.string.dlg_disconnect_body),
+            confirm = getString(if (downloading) R.string.dlg_stop else R.string.disconnect),
+            dismiss = getString(if (downloading) R.string.continue_ else R.string.dlg_stay),
             onConfirm = { sendAction(if (downloading) TransferService.ACTION_CANCEL else TransferService.ACTION_DISCONNECT) },
         )
     }
@@ -987,7 +986,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             doneSize = formatSize(st.batchBytesDone),
             current = st.progressName,
             currentPercent = pct,
-            currentSize = "${formatSize(st.progressDone)} di ${formatSize(st.progressTotal)}",
+            currentSize = getString(R.string.x_of_y, formatSize(st.progressDone), formatSize(st.progressTotal)),
             queued = (st.batchCount - st.batchIndex).coerceAtLeast(0),
         )
     }
@@ -1138,7 +1137,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 emptyList()
             }
             val cam = devices.firstOrNull()
-            if (cam == null) "Nessuna camera collegata" else "Collegata: " + (cam.productName ?: "camera USB")
+            if (cam == null) getString(R.string.usb_none) else getString(R.string.usb_connected, cam.productName ?: getString(R.string.camera_usb))
         }
         val paired = pairing()
         val immichSettings = ImmichSync.settings(this)
@@ -1150,36 +1149,32 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             useWifi = useWifi,
             canConnect = !st.connected && !st.busy,
             cameraName = paired?.name?.ifEmpty { "Fujifilm" } ?: "Fujifilm",
-            pairTag = if (paired != null) "Abbinata" else "Usa l'abbinamento di XApp",
-            hint = if (paired != null) ""
-            else "Se la camera non è mai stata abbinata a questo telefono, usa «Abbina nuova camera» " +
-                "(sulla camera: Bluetooth › Registrazione abbinamento).",
+            pairTag = getString(if (paired != null) R.string.paired else R.string.use_xapp_pairing),
+            hint = if (paired != null) "" else getString(R.string.pair_hint),
             paired = paired != null,
             // only what the app knows: its own link to the camera's network, not the camera's radio
             wifiTag = when {
-                st.connected && st.connectionLabel != "USB" -> "Wi-Fi collegato"
-                st.busy -> "Wi-Fi in avvio"
-                else -> "Wi-Fi non collegato"
+                st.connected && st.connectionLabel != "USB" -> getString(R.string.wifi_joined)
+                st.busy -> getString(R.string.wifi_starting)
+                else -> getString(R.string.wifi_not_joined)
             },
             wifiOn = st.connected && st.connectionLabel != "USB",
             lastWhen = if (lastAt > 0) whenLabel(lastAt) else "",
-            lastText = if (lastAt <= 0) "" else when (lastSaved) {
-                0 -> "Nessuna foto scaricata"
-                1 -> "1 foto scaricata"
-                else -> "$lastSaved foto scaricate"
-            } + if (forImmich > 0) " · $forImmich ancora da inviare a Immich" else "",
+            lastText = if (lastAt <= 0) "" else (if (lastSaved == 0) getString(R.string.last_none)
+            else resources.getQuantityString(R.plurals.last_saved, lastSaved, lastSaved)) +
+                if (forImmich > 0) " · " + getString(R.string.last_for_immich, forImmich) else "",
             cachedCount = if (paired != null && !st.busy) savedListing()?.size ?: 0 else 0,
             manualOpen = manualOpen,
             usbStatus = usbStatus,
             backupLinked = immichSettings.configured,
             backupSub = run {
                 val how = when (immichSettings.mode) {
-                    ImmichSync.MODE_AUTO -> "Dopo ogni download"
-                    ImmichSync.MODE_OFFER -> "Chiede a fine download"
-                    else -> "Invii tu dalla galleria"
+                    ImmichSync.MODE_AUTO -> getString(R.string.backup_auto)
+                    ImmichSync.MODE_OFFER -> getString(R.string.backup_offer)
+                    else -> getString(R.string.backup_ask)
                 }
                 val waiting = immichQueued.size
-                if (waiting > 0) "$how · $waiting in coda" else how
+                if (waiting > 0) getString(R.string.backup_how_queued, how, waiting) else how
             },
         )
     }
@@ -1196,11 +1191,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             usb = usb,
             step = step,
             title = when {
-                usb -> "Apro la camera via USB…"
-                step == 0 -> "Cerco la camera…"
-                step == 1 -> "Accendo il Wi-Fi della camera…"
-                step == 2 -> "Mi collego alla camera…"
-                else -> "Leggo l'elenco delle foto…"
+                usb -> getString(R.string.cg_usb)
+                step == 0 -> getString(R.string.cg_search)
+                step == 1 -> getString(R.string.cg_wifi)
+                step == 2 -> getString(R.string.cg_join)
+                else -> getString(R.string.st_listing)
             },
             icon = when {
                 usb -> R.drawable.ic_usb
@@ -1277,9 +1272,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val lo = totals.min()
         val hi = totals.max()
         val label = when {
-            past.size == 1 -> "l'ultima volta $hi s in tutto"
-            lo == hi -> "di solito $hi s in tutto"
-            else -> "di solito $lo–$hi s in tutto"
+            past.size == 1 -> getString(R.string.typ_last, hi)
+            lo == hi -> getString(R.string.typ_usually, hi)
+            else -> getString(R.string.typ_range, lo, hi)
         }
         return Typical(per, label, hi * 1000)
     }
@@ -1288,9 +1283,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     private fun updateError() {
         errorUi = errorUiFor(
-            TransferState.status,
+            this, TransferState.errorDetail.ifEmpty { TransferState.status },
             DebugLog.text().lines().filter { it.isNotBlank() }.takeLast(6).joinToString("\n")
-                .ifEmpty { "Il registro è vuoto." },
+                .ifEmpty { getString(R.string.log_empty_short) },
         ).copy(events = connectEvents())
     }
 
@@ -1298,18 +1293,18 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private fun connectEvents(): List<ConnectEvent> {
         val k = failedStep
         if (k < 0 || TransferState.connectionLabel == "USB") return emptyList()
-        val fmt = java.text.SimpleDateFormat("HH:mm:ss", Locale.ITALY)
-        val name = TransferState.cameraName.takeIf { it.isNotEmpty() && it != "Camera" } ?: "la camera"
+        val fmt = java.text.SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        val name = TransferState.cameraName.takeIf { it.isNotEmpty() && it != getString(R.string.camera_label) } ?: getString(R.string.the_camera)
         val ok = listOf(
-            "Bluetooth: trovata $name, abbinamento riconosciuto",
-            "La camera ha acceso il suo Wi-Fi",
-            "Telefono collegato alla rete della camera",
+            getString(R.string.ev_bluetooth, name),
+            getString(R.string.step_camera_wifi_done),
+            getString(R.string.ev_joined),
         )
         val failed = listOf(
-            "Bluetooth e abbinamento: non riuscito",
-            "Accensione del Wi-Fi della camera: non riuscita",
-            "Collegamento alla rete della camera: non riuscito",
-            "Sessione ed elenco delle foto: non riusciti",
+            getString(R.string.ev_fail_bluetooth),
+            getString(R.string.ev_fail_wifi),
+            getString(R.string.ev_fail_join),
+            getString(R.string.ev_fail_session),
         )
         val out = ArrayList<ConnectEvent>()
         for (i in 0 until k.coerceAtMost(3)) {
@@ -1327,21 +1322,20 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val count = if (st.listing && st.listTotal > 0) st.listTotal else st.objects.size // the card's total while loading
         // background work as a thin bar: the list first, then the positions
         val (label, done, total) = when {
-            st.listing && st.listTotal > 0 -> Triple("Carico le foto dalla camera", st.listDone, st.listTotal)
-            st.metaScanning && st.metaTotal > 0 -> Triple("Leggo luoghi e pellicole", st.metaDone, st.metaTotal)
+            st.listing && st.listTotal > 0 -> Triple(getString(R.string.work_listing), st.listDone, st.listTotal)
+            st.metaScanning && st.metaTotal > 0 -> Triple(getString(R.string.work_meta), st.metaDone, st.metaTotal)
             else -> Triple("", 0, 0)
         }
-        val transient = !st.statusIsError && !st.status.startsWith("Connesso") && !st.status.startsWith("Finito") &&
-            !st.status.startsWith("Leggo l'elenco") && !st.status.startsWith("Sessione aperta")
+        val transient = !st.statusIsError && !st.statusSteady
         galleryTopUi = galleryTopUi.copy(
             cached = false,
             link = null,
-            title = st.cameraName.ifEmpty { "Camera" },
-            info = "${st.connectionLabel} · ${formatCount(count)} file",
-            banner = if (st.statusIsError) st.status + "\n\nTocca qui per il registro tecnico." else "",
+            title = st.cameraName.ifEmpty { getString(R.string.camera_label) },
+            info = st.connectionLabel + " · " + resources.getQuantityString(R.plurals.n_files, count, formatCount(count)),
+            banner = if (st.statusIsError) st.status + "\n\n" + getString(R.string.banner_tap_log) else "",
             working = total > 0,
             workLabel = label,
-            workCount = if (total > 0) "${formatCount(done)} di ${formatCount(total)}" else "",
+            workCount = if (total > 0) getString(R.string.x_of_y, formatCount(done), formatCount(total)) else "",
             workProgress = if (total > 0) (done * 1000L / total).toInt().coerceIn(0, 1000) else 0,
             subtitle = if (transient && st.status.isNotBlank()) st.status else "",
         )
@@ -1400,7 +1394,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             val sub = listOfNotNull(
                 where.ifEmpty { null },
                 photosLabel(group.size),
-                if (doneCount > 0 && filter != Filter.NEW) "$doneCount già sul telefono" else null,
+                if (doneCount > 0 && filter != Filter.NEW) getString(R.string.n_on_phone, doneCount) else null,
             ).joinToString(" · ")
             out.add(GridRow.Header(dayLabel(day), sub, group))
             for (k in group.indices step 3) out.add(GridRow.Tiles(group.subList(k, minOf(k + 3, group.size))))
@@ -1417,11 +1411,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             else -> 0
         }
         emptyText = if (!(files.isEmpty() && TransferState.connected)) "" else when {
-            all.isEmpty() -> "Nessun file sulla camera."
-            areaKeys != null || dateRange != null || films.isNotEmpty() ->
-                "Nessun file con questi filtri.\nTocca la x su «Data», «Luogo» o «Pellicola» per toglierli."
-            filter == Filter.NEW -> "Niente di nuovo: hai già scaricato tutto.\nUsa «Tutte» per vedere ogni file."
-            else -> "Nessun file in questa categoria."
+            all.isEmpty() -> getString(R.string.empty_none)
+            areaKeys != null || dateRange != null || films.isNotEmpty() -> getString(R.string.empty_filters)
+            filter == Filter.NEW -> getString(R.string.empty_new)
+            else -> getString(R.string.empty_category)
         }
     }
 
@@ -1513,7 +1506,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             Filter.VIDEO to all.count { kindOf(it) == Kind.VIDEO },
         )
         val names = mapOf(
-            Filter.NEW to "Nuove", Filter.ALL to "Tutte", Filter.PHOTO to "Foto", Filter.RAW to "RAW", Filter.VIDEO to "Video",
+            Filter.NEW to getString(R.string.chip_new), Filter.ALL to getString(R.string.chip_all), Filter.PHOTO to getString(R.string.chip_photos),
+            Filter.RAW to "RAW", Filter.VIDEO to getString(R.string.chip_video),
         )
         galleryTopUi = galleryTopUi.copy(
             dated = dateRange != null,
@@ -1521,7 +1515,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             area = areaKeys != null,
             areaLabel = areaLabel,
             film = films.isNotEmpty(),
-            filmLabel = if (films.size == 1) films.first() else "${films.size} pellicole",
+            filmLabel = if (films.size == 1) Films.label(this, films.first()) else getString(R.string.n_films, films.size),
             chips = Filter.values().map { f -> ChipUi("${names[f]} ${formatCount(counts[f] ?: 0)}", f == filter) },
         )
     }
@@ -1534,18 +1528,15 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         // chosen files that the current filters hide are still downloaded: say so
         val shown = files.mapTo(HashSet()) { it.handle }
         val hidden = selObjs.count { it.handle !in shown }
-        val hiddenNote = if (hidden > 0) " · $hidden non visibili coi filtri" else ""
+        val hiddenNote = if (hidden > 0) " · " + getString(R.string.hidden_by_filters, hidden) else ""
         galleryBottomUi = galleryBottomUi.copy(
-            selTitle = when (selObjs.size) {
-                0 -> "Nessuna selezionata"
-                1 -> "1 selezionata"
-                else -> "${selObjs.size} selezionate"
-            },
+            selTitle = if (selObjs.isEmpty()) getString(R.string.sel_none)
+            else resources.getQuantityString(R.plurals.sel_n, selObjs.size, selObjs.size),
             selInfo = when {
-                selObjs.isEmpty() -> if (later) "Tocca le foto da scaricare" else "Tieni premuta una foto per selezionarla"
-                later && st.busy -> "Partono appena la camera è pronta"
-                later -> "Si scaricano quando colleghi la camera"
-                !st.sizesKnown -> "Dimensioni lette al download$hiddenNote"
+                selObjs.isEmpty() -> getString(if (later) R.string.sel_tap_later else R.string.sel_hold)
+                later && st.busy -> getString(R.string.sel_when_ready)
+                later -> getString(R.string.sel_when_connected)
+                !st.sizesKnown -> getString(R.string.sel_sizes_later) + hiddenNote
                 else -> formatSize(bytes) + hiddenNote
             },
             canDownload = selObjs.isNotEmpty() && (st.connected || later), // during a batch the new one waits in the queue
@@ -1553,9 +1544,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             // files not on the phone yet need the camera to fetch them first
             canUpload = selObjs.isNotEmpty() && (st.connected || selObjs.all { key(it) in done }),
             snack = if (selObjs.isEmpty()) uploadSnack else "",
-            hint = if (selObjs.isNotEmpty() && selObjs.size < 3 && !dragUsed) "Tieni premuto e trascina per scegliere più foto in un colpo" else "",
-            snackSub = if (ImmichSync.settings(this).wifiOnly) "Partono col Wi‑Fi, anche ad app chiusa"
-            else "Partono appena c'è la rete, anche ad app chiusa",
+            hint = if (selObjs.isNotEmpty() && selObjs.size < 3 && !dragUsed) getString(R.string.drag_hint) else "",
+            snackSub = getString(if (ImmichSync.settings(this).wifiOnly) R.string.snack_wifi else R.string.snack_any),
         )
         galleryTopUi = galleryTopUi.copy(allSelected = files.isNotEmpty() && files.all { it.handle in selected })
     }
@@ -1576,24 +1566,23 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             lastT = now
             lastBytes = doneBytes
         }
-        val eta = if (speed > 1.0 && total > doneBytes) "circa " + formatDuration(((total - doneBytes) / speed).toLong()) else "…"
+        val eta = if (speed > 1.0 && total > doneBytes) getString(R.string.about, formatDuration(((total - doneBytes) / speed).toLong())) else "…"
         val finished = (st.batchIndex - 1).coerceAtLeast(0)
         val queued = (st.batchCount - st.batchIndex).coerceAtLeast(0)
         downloadUi = downloadUi.copy(
             batch = st.batch,
             batchIndex = st.batchIndex,
-            title = "${st.batchIndex} di ${st.batchCount}",
+            title = getString(R.string.n_of_m, st.batchIndex, st.batchCount),
             next = ImmichSync.settings(this).let { im ->
                 if (!im.configured || im.mode != ImmichSync.MODE_AUTO) ""
-                else if (im.wifiOnly) "Poi su Immich, appena il telefono è su un Wi-Fi con internet"
-                else "Poi su Immich, appena c'è la rete"
+                else getString(if (im.wifiOnly) R.string.next_immich_wifi else R.string.next_immich_any)
             },
-            bytes = "${formatSize(doneBytes)} di ${if (st.sizesKnown) "" else "circa "}${formatSize(total)}",
+            bytes = getString(if (st.sizesKnown) R.string.x_of_y else R.string.x_of_about_y, formatSize(doneBytes), formatSize(total)),
             progress = if (total > 0) (doneBytes * 1000 / total).toInt().coerceIn(0, 1000) else downloadUi.progress,
             speed = if (speed > 1.0) formatSize(speed.toLong()) + "/s" else "…",
             eta = eta,
             retryNote = st.retryNote,
-            counts = "$finished completati · 1 in corso · $queued in coda",
+            counts = getString(R.string.dl_counts, finished, queued),
             currentDone = st.progressDone,
             currentTotal = st.progressTotal,
         )
@@ -1623,7 +1612,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val film = TransferState.meta[MetaStore.key(info.filename, info.captureDate)]?.film
         return DetailsUi(
             title = info.filename.substringBeforeLast('.'),
-            format = info.filename.substringAfterLast('.', "").uppercase(Locale.ROOT) + (if (film != null) " · $film" else ""),
+            format = info.filename.substringAfterLast('.', "").uppercase(Locale.ROOT) + (if (film != null) " · " + Films.label(this, film) else ""),
             date = formatDate(info.captureDate).ifEmpty { "—" },
             dims = if (info.width > 0 && info.height > 0) "${info.width} × ${info.height}" else "—",
             size = when {
@@ -1631,7 +1620,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 info.sizeOverflow() -> "≥ 4 GB"
                 else -> formatSize(info.size)
             },
-            done = if (key(info) in done) "Già scaricata" else "Non ancora",
+            done = getString(if (key(info) in done) R.string.already_downloaded else R.string.immich_not_yet),
             canDownload = TransferState.connected,
             selected = info.handle in selected,
             megapixels = if (info.width > 0 && info.height > 0) "${(info.width * info.height + 500_000) / 1_000_000} MP" else "",
@@ -1692,7 +1681,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
         fun retryVideo() {
             val f = lastVideo ?: return
-            loadUi = loadUi.copy(videoWhat = "", videoWhy = "", status = "Riprovo con il decoder software…")
+            loadUi = loadUi.copy(videoWhat = "", videoWhy = "", status = getString(R.string.vw_retry_sw))
             playVideo(f, ffmpegFirst = true)
         }
         /** What the current file shows: 0 nothing, 1 its thumbnail, 2 the quick preview, 3 the original. */
@@ -1857,7 +1846,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             val i = info
             DebugLog.detail("visualizzatore: ${i.filename} (${index + 1} di ${items.size})")
             topUi = topUi.copy(name = i.filename)
-            topUi = topUi.copy(note = "${index + 1} di ${items.size} · ${formatDate(i.captureDate)}")
+            topUi = topUi.copy(note = getString(R.string.n_of_m, index + 1, items.size) + " · " + formatDate(i.captureDate))
             ui.videoVisible = false
             ui.imageVisible = true
             topUi = topUi.copy(hd = false)
@@ -1880,7 +1869,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 // fetched only on a tap: 3 Nov, three videos opened and dropped one after the other made the
                 // X-M5 stop answering and turn its Wi-Fi off
                 if (connected) ui.playVisible = true
-                else say("Collega la camera per vedere il video", progress = false)
+                else say(getString(R.string.vw_connect_video), progress = false)
                 askPreviews()
                 return
             }
@@ -1888,9 +1877,9 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             when {
                 cached != null -> showQuick(cached)
                 Previews.applies(i) && connected && Previews.key(i) !in TransferState.previewMissing ->
-                    say("Preparo l'anteprima…", progress = false)
+                    say(getString(R.string.vw_preparing), progress = false)
                 connected -> fetchOriginal()
-                else -> say("Collega la camera per vedere questo file", progress = false)
+                else -> say(getString(R.string.vw_connect_file), progress = false)
             }
             askPreviews()
         }
@@ -1932,7 +1921,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             DebugLog.detail("visualizzatore: chiedo l'originale di ${info.filename}")
             waitingOriginal = true
             topUi = topUi.copy(hd = false)
-            say(if (kindOf(info) == Kind.VIDEO) "Scarico il video originale…" else "Scarico la foto originale…", progress = true)
+            say(getString(if (kindOf(info) == Kind.VIDEO) R.string.vw_fetch_video else R.string.vw_fetch_photo), progress = true)
             startService(Intent(this@MainActivity, TransferService::class.java).setAction(TransferService.ACTION_VIEW)
                 .putExtra(TransferService.EXTRA_HANDLE, info.handle))
         }
@@ -1965,7 +1954,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             when {
                 st.viewError.isNotEmpty() -> {
                     waitingOriginal = false
-                    loadUi = loadUi.copy(status = "Originale non scaricato: ${st.viewError}")
+                    loadUi = loadUi.copy(status = getString(R.string.vw_original_failed, st.viewError))
                     loadUi = loadUi.copy(progressVisible = false)
                     loadUi = loadUi.copy(bytes = "")
                 }
@@ -1977,7 +1966,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     val t = st.viewTotal
                     if (t > 0) {
                         loadUi = loadUi.copy(progress = (st.viewDone * 1000 / t).toInt())
-                        loadUi = loadUi.copy(bytes = "${formatSize(st.viewDone)} di ${formatSize(t)}")
+                        loadUi = loadUi.copy(bytes = getString(R.string.x_of_y, formatSize(st.viewDone), formatSize(t)))
                     }
                 }
             }
@@ -1986,7 +1975,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         private fun afterQuick() {
             if (!waitingOriginal) ui.loadingVisible = false
             if (Previews.isRaf(info)) {
-                topUi = topUi.copy(note = "${index + 1} di ${items.size} · anteprima del RAF")
+                topUi = topUi.copy(note = getString(R.string.n_of_m, index + 1, items.size) + " · " + getString(R.string.vw_raf_preview))
             } else {
                 // the RAF's JPEG is all a phone shows of a RAF anyway; a photo has more in its original
                 topUi = topUi.copy(hd = TransferState.connected && !waitingOriginal)
@@ -1999,7 +1988,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 decoding = false
                 if (bmp == null) {
                     level = 2 // tried: update() must not decode it again on every refresh
-                    if (TransferState.connected) fetchOriginal() else say("Anteprima non leggibile", progress = false)
+                    if (TransferState.connected) fetchOriginal() else say(getString(R.string.vw_preview_unreadable), progress = false)
                     return@decodeCenter
                 }
                 pictures.put(info.handle, bmp)
@@ -2017,19 +2006,19 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 playVideo(f)
                 return
             }
-            loadUi = loadUi.copy(status = "Apro la foto…")
+            loadUi = loadUi.copy(status = getString(R.string.vw_opening))
             loadUi = loadUi.copy(progressVisible = false)
             loadUi = loadUi.copy(bytes = "")
             decodeCenter(f, 4096) { bmp ->
                 if (bmp == null) {
-                    loadUi = loadUi.copy(status = "Non riesco a mostrare questo file sul telefono")
+                    loadUi = loadUi.copy(status = getString(R.string.vw_cannot_show))
                     return@decodeCenter
                 }
                 ui.cur = bmp
                 level = 3
                 ui.loadingVisible = false
                 topUi = topUi.copy(hd = false)
-                if (kindOf(info) == Kind.RAW) topUi = topUi.copy(note = "${index + 1} di ${items.size} · JPEG contenuto nel RAF")
+                if (kindOf(info) == Kind.RAW) topUi = topUi.copy(note = getString(R.string.n_of_m, index + 1, items.size) + " · " + getString(R.string.vw_raf_jpeg))
             }
         }
 
@@ -2127,16 +2116,15 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                         fmt?.sampleMimeType?.contains("avc") == true -> "H.264"
                         else -> fmt?.sampleMimeType?.substringAfter('/')?.uppercase(Locale.ROOT)
                     }
-                    val bits = fmt?.colorInfo?.lumaBitdepth?.takeIf { it > 8 }?.let { " a $it bit" } ?: ""
+                    val bits = fmt?.colorInfo?.lumaBitdepth?.takeIf { it > 8 }?.let { getString(R.string.vw_bits, it) } ?: ""
                     val size = if (fmt != null && fmt.width > 0 && fmt.height > 0) ", ${fmt.width} × ${fmt.height}" else ""
                     loadUi = loadUi.copy(
-                        status = "Questo video non si può riprodurre sul telefono (${error.errorCodeName})",
+                        status = getString(R.string.vw_cannot_play, error.errorCodeName),
                         progressVisible = false,
                         bytes = "",
-                        videoWhat = if (codec != null) "È un video $codec$bits$size." else "Errore del lettore: ${error.errorCodeName}.",
-                        videoWhy = (if (ffmpegFirst) "Né il decoder del telefono né quello di ripiego (FFmpeg) riescono a riprodurlo. "
-                        else "Il lettore del telefono si è fermato (${error.errorCodeName}). ") +
-                            "Puoi scaricarlo e guardarlo su un computer o su un altro telefono.",
+                        videoWhat = if (codec != null) getString(R.string.vw_what, codec + bits + size) else getString(R.string.vw_player_error, error.errorCodeName),
+                        videoWhy = (if (ffmpegFirst) getString(R.string.vw_why_both) else getString(R.string.vw_why_player, error.errorCodeName)) +
+                            " " + getString(R.string.vw_why_elsewhere),
                         videoCanDownload = key(info) !in done && TransferState.connected,
                     )
                 }
@@ -2208,7 +2196,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     // ------------------------------------------------------------------ helpers
 
-    private enum class Kind(val label: String) { PHOTO("FOTO"), RAW("RAW"), VIDEO("VIDEO"), OTHER("ALTRO") }
+    private enum class Kind(val label: Int) { PHOTO(R.string.kind_photo), RAW(R.string.kind_raw), VIDEO(R.string.kind_video), OTHER(R.string.kind_other) }
 
     private fun kindOf(o: ObjectInfo): Kind = when (o.filename.substringAfterLast('.', "").lowercase(Locale.ROOT)) {
         "jpg", "jpeg", "heif", "heic", "hif" -> Kind.PHOTO
@@ -2217,7 +2205,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         else -> Kind.OTHER
     }
 
-    private fun photosLabel(n: Int) = if (n == 1) "1 file" else "${formatCount(n)} file"
+    private fun photosLabel(n: Int) = resources.getQuantityString(R.plurals.n_files, n, formatCount(n))
 
     private fun formatCount(n: Int): String = java.text.NumberFormat.getIntegerInstance().format(n)
 
@@ -2246,7 +2234,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     /** "Oggi", "Ieri" or e.g. "Domenica 18 ottobre" (with the year when it is not this year). */
     private fun dayLabel(day: String): String {
-        if (day.length < 8) return "Data sconosciuta"
+        if (day.length < 8) return getString(R.string.date_unknown)
         return try {
             val d = SimpleDateFormat("yyyyMMdd", Locale.ROOT).parse(day) ?: return day
             val c = Calendar.getInstance().apply { time = d }
@@ -2255,10 +2243,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 a.get(Calendar.DAY_OF_YEAR) == b.get(Calendar.DAY_OF_YEAR)
             val yesterday = (today.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
             when {
-                sameDay(c, today) -> "Oggi"
-                sameDay(c, yesterday) -> "Ieri"
+                sameDay(c, today) -> getString(R.string.today)
+                sameDay(c, yesterday) -> getString(R.string.yesterday)
                 else -> {
-                    val pattern = if (c.get(Calendar.YEAR) == today.get(Calendar.YEAR)) "EEEE d MMMM" else "EEEE d MMMM yyyy"
+                    val skeleton = if (c.get(Calendar.YEAR) == today.get(Calendar.YEAR)) "EEEEdMMMM" else "EEEEdMMMMyyyy"
+                    val pattern = android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), skeleton)
                     SimpleDateFormat(pattern, Locale.getDefault()).format(d).replaceFirstChar { it.titlecase(Locale.getDefault()) }
                 }
             }
@@ -2274,7 +2263,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         if (!hasBlePermissions()) {
             requestRuntimePermissions()
             TransferState.statusIsError = true
-            TransferState.status = "Serve il permesso Bluetooth (dispositivi nelle vicinanze): consentilo e riprova"
+            TransferState.status = getString(R.string.need_ble_perm)
+            TransferState.errorDetail = TransferState.status
             TransferState.publish()
             return
         }
@@ -2292,11 +2282,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     private fun confirmForget() {
         appDialog = AppDialog.Confirm(
-            title = "Dimenticare la camera?",
-            message = "Per usarla di nuovo dovrai rifare l'abbinamento dalla camera. " +
-                "Puoi anche rimuoverla dai dispositivi Bluetooth del telefono.",
-            confirm = "Dimentica",
-            dismiss = "Annulla",
+            title = getString(R.string.dlg_forget_title),
+            message = getString(R.string.dlg_forget_body),
+            confirm = getString(R.string.forget),
+            dismiss = getString(R.string.cancel),
             onConfirm = {
                 getSharedPreferences("fuji", MODE_PRIVATE).edit().remove(TransferService.PREF_PAIRING).apply()
                 onChanged()
@@ -2309,15 +2298,15 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         if (text.isEmpty()) return
         val cm = getSystemService(android.content.ClipboardManager::class.java)
         cm.setPrimaryClip(android.content.ClipData.newPlainText("Fuji Transfer log", text))
-        android.widget.Toast.makeText(this, "Registro copiato", android.widget.Toast.LENGTH_SHORT).show()
+        android.widget.Toast.makeText(this, getString(R.string.log_copied), android.widget.Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmClearLog() {
         appDialog = AppDialog.Confirm(
-            title = "Svuotare il registro?",
-            message = "Le righe spariscono da questa schermata. Il file completo che mandi con «Condividi» le conserva.",
-            confirm = "Svuota",
-            dismiss = "Annulla",
+            title = getString(R.string.dlg_clear_log_title),
+            message = getString(R.string.dlg_clear_log_body),
+            confirm = getString(R.string.clear),
+            dismiss = getString(R.string.cancel),
             onConfirm = { DebugLog.clear() },
         )
     }
@@ -2361,11 +2350,11 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         if (b.cancelled) return
         val sec = (b.millis / 1000).coerceAtLeast(1)
         val raw = b.saved.any { kindOf(it) == Kind.RAW }
-        val where = if (raw) "foto in Fujifilm, RAW in Download/Fujifilm" else "Galleria › Fujifilm"
+        val where = getString(if (raw) R.string.where_raw else R.string.where_gallery)
         val s = ImmichSync.settings(this)
         val base = DoneUi(
             id = b.id, saved = b.saved, batchSize = b.saved.size + b.left.size, failed = b.failed,
-            summary = "${formatSize(b.bytes)} in ${formatDuration(sec)} · $where",
+            summary = getString(R.string.done_summary, formatSize(b.bytes), formatDuration(sec), where),
             keepAwake = keepAwakeState,
         )
         if (b.cameraWifiOff) {
@@ -2379,7 +2368,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         if (!wasVisible || b.saved.isEmpty()) {
             if (b.saved.isNotEmpty() && b.failed == 0) {
-                android.widget.Toast.makeText(this, "Finito: ${b.saved.size} file scaricati\nFoto e video in Fujifilm, RAW in Download/Fujifilm",
+                android.widget.Toast.makeText(this, getString(R.string.st_done, b.saved.size) + "\n" + getString(R.string.notif_where),
                     android.widget.Toast.LENGTH_LONG).show()
             }
             return
@@ -2437,7 +2426,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                 resumeKeys = null
                 val handles = st.objects.filter { key(it) in keys }.map { it.handle }
                 if (handles.isEmpty()) {
-                    android.widget.Toast.makeText(this, "I file scelti non sono più sulla camera", android.widget.Toast.LENGTH_LONG).show()
+                    android.widget.Toast.makeText(this, getString(R.string.toast_files_gone), android.widget.Toast.LENGTH_LONG).show()
                 } else {
                     downloadsHidden = false
                     startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, handles.toLongArray()) }
@@ -2577,7 +2566,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         }
         val f = DebugLog.export(this, header)
         if (f == null) {
-            android.widget.Toast.makeText(this, "Il registro è vuoto", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, getString(R.string.log_empty_short), android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         val uri = LogProvider.uriFor(this, f)
@@ -2588,7 +2577,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         send.clipData = android.content.ClipData.newRawUri(f.name, uri) // the chooser's targets get the grant too
         DebugLog.detail("registro condiviso: ${f.name}, ${f.length() / 1024} kB")
-        startActivity(Intent.createChooser(send, "Condividi il registro"))
+        startActivity(Intent.createChooser(send, getString(R.string.share_log)))
     }
 
     // Old marks were "name|size|date": keep matching them by name + date.
@@ -2683,11 +2672,10 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
 
     private fun confirmClearSaved() {
         appDialog = AppDialog.Confirm(
-            title = "Svuotare elenco e miniature?",
-            message = "Si cancellano l'elenco delle foto salvato e le miniature. Le foto scaricate restano dove sono. " +
-                "Il prossimo collegamento rilegge tutto dalla camera, quindi è più lento.",
-            confirm = "Svuota",
-            dismiss = "Annulla",
+            title = getString(R.string.dlg_clear_saved_title),
+            message = getString(R.string.dlg_clear_saved_body),
+            confirm = getString(R.string.clear),
+            dismiss = getString(R.string.cancel),
             onConfirm = {
                 filesDir.listFiles { f -> f.name.startsWith("listing-") }?.forEach { it.delete() }
                 java.io.File(cacheDir, "thumbs").listFiles()?.forEach { it.delete() }
@@ -2710,35 +2698,35 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val pm = getSystemService(android.os.PowerManager::class.java)
         val unlimited = pm.isIgnoringBatteryOptimizations(packageName)
         val im = ImmichSync.settings(this)
-        val imSub = if (!im.configured) "Non collegato · facoltativo" else listOf(
-            "Collegato a " + im.url.trim().substringAfter("://").substringBefore('/').substringBefore(':'),
+        val imSub = if (!im.configured) getString(R.string.set_im_off) else listOf(
+            getString(R.string.set_im_linked, im.url.trim().substringAfter("://").substringBefore('/').substringBefore(':')),
             when (im.mode) {
-                ImmichSync.MODE_AUTO -> "dopo ogni download"
-                ImmichSync.MODE_OFFER -> "chiede a fine download"
-                else -> "solo quando lo chiedo"
+                ImmichSync.MODE_AUTO -> getString(R.string.set_im_auto)
+                ImmichSync.MODE_OFFER -> getString(R.string.set_im_offer)
+                else -> getString(R.string.set_im_ask)
             },
-            if (im.wifiOnly) "solo Wi‑Fi" else "anche dati mobili",
+            getString(if (im.wifiOnly) R.string.set_im_wifi else R.string.set_im_mobile),
         ).joinToString(" · ")
         return listOf(
-            SettingGroup("Camera", listOf(
+            SettingGroup(getString(R.string.camera_label), listOf(
                 SettingRow(
-                    R.drawable.ic_camera, if (paired != null) paired.name.ifEmpty { "Camera abbinata" } else "Nessuna camera abbinata",
-                    if (paired != null) "Abbinata: l'abbinamento si riusa, anche quello di XApp" else "Si usa l'abbinamento di XApp, se c'è",
-                    button = if (paired != null) "Dimentica" else "", onButton = { confirmForget() }, enabled = idle || paired == null,
+                    R.drawable.ic_camera, if (paired != null) paired.name.ifEmpty { getString(R.string.set_paired_camera) } else getString(R.string.set_no_camera),
+                    getString(if (paired != null) R.string.set_paired_sub else R.string.set_no_camera_sub),
+                    button = if (paired != null) getString(R.string.forget) else "", onButton = { confirmForget() }, enabled = idle || paired == null,
                 ),
-                SettingRow(R.drawable.ic_plus, "Abbina nuova camera", onClick = {
+                SettingRow(R.drawable.ic_plus, getString(R.string.pair_new_camera), onClick = {
                     settingsOpen = false
                     startBle(TransferService.ACTION_PAIR_BLE)
                 }, enabled = idle),
             )),
-            SettingGroup("Download", listOf(
-                SettingRow(R.drawable.ic_sun, "Tieni lo schermo acceso", "Durante i download, a luce minima", switch = awake, onSwitch = { setKeepAwake(it) }),
-                SettingRow(R.drawable.ic_folder, "Cartella di salvataggio", "Foto in Pictures/Fujifilm, video in Movies/Fujifilm, RAW in Download/Fujifilm"),
+            SettingGroup(getString(R.string.download_title), listOf(
+                SettingRow(R.drawable.ic_sun, getString(R.string.keep_awake), getString(R.string.keep_awake_sub), switch = awake, onSwitch = { setKeepAwake(it) }),
+                SettingRow(R.drawable.ic_folder, getString(R.string.set_folder), getString(R.string.set_folder_sub)),
             )),
-            SettingGroup("Batteria", listOf(
+            SettingGroup(getString(R.string.set_battery), listOf(
                 SettingRow(
-                    R.drawable.ic_battery, "Uso in background",
-                    if (unlimited) "Senza limiti" else "Limitato da Android · consigliato: senza limiti",
+                    R.drawable.ic_battery, getString(R.string.set_background),
+                    getString(if (unlimited) R.string.set_unlimited else R.string.set_limited),
                     onClick = {
                         if (unlimited) {
                             try {
@@ -2752,16 +2740,16 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     },
                 ),
             )),
-            SettingGroup("Immich", listOf(
-                SettingRow(R.drawable.ic_immich, "Immich", imSub, onClick = { showImmich() }),
+            SettingGroup(getString(R.string.tile_immich), listOf(
+                SettingRow(R.drawable.ic_immich, getString(R.string.tile_immich), imSub, onClick = { showImmich() }),
             )),
-            SettingGroup("Dati salvati", listOf(
+            SettingGroup(getString(R.string.set_saved), listOf(
                 SettingRow(
-                    R.drawable.ic_photos, "Elenco e miniature",
-                    formatSize(savedDataBytes) + " · dopo lo svuotamento il prossimo collegamento è più lento",
-                    button = "Svuota", onButton = { confirmClearSaved() }, enabled = idle,
+                    R.drawable.ic_photos, getString(R.string.set_saved_list),
+                    getString(R.string.set_saved_list_sub, formatSize(savedDataBytes)),
+                    button = getString(R.string.clear), onButton = { confirmClearSaved() }, enabled = idle,
                 ),
-                SettingRow(R.drawable.ic_log, "Registro tecnico", onClick = { showLog() }),
+                SettingRow(R.drawable.ic_log, getString(R.string.cd_log), onClick = { showLog() }),
             )),
         )
     }
@@ -2798,16 +2786,16 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val st = TransferState
         val connecting = st.busy && !st.connected
         galleryTopUi = galleryTopUi.copy(
-            title = pairing()?.name?.ifEmpty { null } ?: "Camera",
-            info = "Dalla cache · ${formatCount(cache?.size ?: 0)} file",
+            title = pairing()?.name?.ifEmpty { null } ?: getString(R.string.camera_label),
+            info = getString(R.string.from_cache) + " · " + photosLabel(cache?.size ?: 0),
             cached = true,
             banner = "",
             working = false,
             subtitle = "",
             link = if (connecting) GalleryLink(
-                "Collego la camera…", "Passo ${st.connectStep.coerceIn(0, 3) + 1} di 4 · intanto puoi scegliere le foto",
-                attemptStart, "Annulla",
-            ) else GalleryLink("Camera non collegata", "Scegli le foto: si scaricano quando la colleghi", 0L, "Connetti"),
+                getString(R.string.link_connecting), getString(R.string.link_connecting_sub, st.connectStep.coerceIn(0, 3) + 1, 4),
+                attemptStart, getString(R.string.cancel),
+            ) else GalleryLink(getString(R.string.link_off), getString(R.string.link_off_sub), 0L, getString(R.string.connect)),
         )
     }
 
@@ -2815,13 +2803,14 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private fun whenLabel(ms: Long): String {
         val day = java.util.Calendar.getInstance().apply { timeInMillis = ms }
         val today = java.util.Calendar.getInstance()
-        val time = java.text.SimpleDateFormat("HH:mm", Locale.ITALY).format(java.util.Date(ms))
+        val time = android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(ms))
         fun sameDay(a: java.util.Calendar, b: java.util.Calendar) =
             a.get(java.util.Calendar.YEAR) == b.get(java.util.Calendar.YEAR) && a.get(java.util.Calendar.DAY_OF_YEAR) == b.get(java.util.Calendar.DAY_OF_YEAR)
-        if (sameDay(day, today)) return "Oggi, $time"
+        if (sameDay(day, today)) return getString(R.string.today_at, time)
         today.add(java.util.Calendar.DAY_OF_YEAR, -1)
-        if (sameDay(day, today)) return "Ieri, $time"
-        return java.text.SimpleDateFormat("d MMM", Locale.ITALY).format(java.util.Date(ms)) + ", " + time
+        if (sameDay(day, today)) return getString(R.string.yesterday_at, time)
+        return java.text.SimpleDateFormat(android.text.format.DateFormat.getBestDateTimePattern(Locale.getDefault(), "dMMM"), Locale.getDefault())
+            .format(java.util.Date(ms)) + ", " + time
     }
 
     // ------------------------------------------------------------------ actions
@@ -2840,7 +2829,8 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         val device = UsbCamera.findDevice(usb)
         if (device == null) {
             TransferState.statusIsError = true
-            TransferState.status = "Nessuna camera USB trovata. Collega il cavo e imposta la camera in modalità PTP/tethering."
+            TransferState.status = getString(R.string.usb_not_found)
+            TransferState.errorDetail = TransferState.status
             TransferState.publish()
             return
         }
@@ -2875,7 +2865,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             }
             DebugLog.add("download dalla galleria salvata: ${keys.size} file, appena la camera è collegata")
             android.widget.Toast.makeText(
-                this, if (keys.size == 1) "La foto parte appena la camera è pronta" else "Le ${keys.size} foto partono appena la camera è pronta",
+                this, resources.getQuantityString(R.plurals.queued_for_camera, keys.size, keys.size),
                 android.widget.Toast.LENGTH_LONG,
             ).show()
             onChanged()
@@ -2914,7 +2904,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
             detailsInfo = null
             previewOpen = false
             immichOpen = true
-            android.widget.Toast.makeText(this, "Prima collega il tuo server Immich", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, getString(R.string.toast_link_immich), android.widget.Toast.LENGTH_SHORT).show()
             return false
         }
         ImmichSync.enqueue(this, list.map { key(it) })
@@ -2933,13 +2923,13 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private fun uploadSelected() {
         val list = shownList.filter { it.handle in selected && key(it) !in immichDone }
         if (list.isEmpty()) {
-            android.widget.Toast.makeText(this, "Sono già tutte su Immich", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, getString(R.string.toast_all_on_immich), android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         if (!queueForImmich(list)) return
         lastQueued = list
         selected.clear()
-        uploadSnack = if (list.size == 1) "1 foto in coda per Immich" else "${list.size} foto in coda per Immich"
+        uploadSnack = resources.getQuantityString(R.plurals.snack_queued, list.size, list.size)
         snackHandler.removeCallbacks(hideSnack)
         snackHandler.postDelayed(hideSnack, 8000)
         refreshVisibleRows(animate = true)

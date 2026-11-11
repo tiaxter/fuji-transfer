@@ -38,6 +38,11 @@ android {
     buildFeatures {
         compose = true
     }
+    // The languages offered in Android 13+'s per-app language settings, from the values-* folders
+    // (res/resources.properties says the folder without a qualifier is English)
+    androidResources {
+        generateLocaleConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

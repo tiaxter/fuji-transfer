@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.height
 import android.graphics.Bitmap
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -259,7 +260,7 @@ private fun HeaderRow(r: GridRow.Header, a: GridActions, tick: Int) {
                 Text(r.sub, color = c.onSurfaceVariant, style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
-        FujiButton(if (all) "Deseleziona" else "Seleziona tutte", { a.onHeader(r) }, kind = ButtonKind.Text, height = 48.dp)
+        FujiButton(if (all) stringResource(R.string.header_deselect) else stringResource(R.string.header_select_all), { a.onHeader(r) }, kind = ButtonKind.Text, height = 48.dp)
     }
 }
 
@@ -293,7 +294,8 @@ private fun CountWhileLoading(loading: Boolean, loadingCount: MutableIntState) {
 private fun GhostTile(modifier: Modifier, pulse: FloatState, loadingCount: MutableIntState) {
     val c = MaterialTheme.colorScheme
     CountWhileLoading(true, loadingCount)
-    Box(modifier.background(c.surfaceContainer).semantics { contentDescription = "Foto non ancora letta dalla camera" }) {
+    val cd = stringResource(R.string.cd_ghost)
+    Box(modifier.background(c.surfaceContainer).semantics { contentDescription = cd }) {
         Box(Modifier.fillMaxSize().graphicsLayer { alpha = pulse.floatValue }.background(c.surfaceContainerHighest))
     }
 }
@@ -375,7 +377,7 @@ private fun Tile(
                     ) {
                         Icon(painterResource(R.drawable.ic_cloud_queue), null, Modifier.size(16.dp), tint = c.onTertiaryContainer)
                         Spacer(Modifier.width(3.dp))
-                        Text("In coda", color = c.onTertiaryContainer, style = type(11, 14, medium = true), maxLines = 1)
+                        Text(stringResource(R.string.queued), color = c.onTertiaryContainer, style = type(11, 14, medium = true), maxLines = 1)
                     }
                 } else if (ui.onImmich) {
                     Icon(

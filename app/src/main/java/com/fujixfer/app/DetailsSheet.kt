@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
@@ -45,7 +46,7 @@ data class DetailsUi(
 )
 
 /** Where a camera file stands with Immich. */
-enum class ImmichMark(val label: String) { None("Non ancora"), Queued("In coda"), Done("Sì") }
+enum class ImmichMark(val label: Int) { None(R.string.immich_not_yet), Queued(R.string.queued), Done(R.string.yes) }
 
 /**
  * The details as a real sheet over the full-size viewer (a window of its own: the viewer stays visible and live
@@ -107,12 +108,12 @@ fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Uni
         }
         Row(Modifier.fillMaxWidth().padding(top = 16.dp)) {
             Column(Modifier.weight(1f)) {
-                Field("Scattata", ui.date)
-                Field("Su Immich", immich.label, Modifier.padding(top = 14.dp), if (immich == ImmichMark.Done) c.primary else null)
+                Field(stringResource(R.string.details_taken), ui.date)
+                Field(stringResource(R.string.details_on_immich), stringResource(immich.label), Modifier.padding(top = 14.dp), if (immich == ImmichMark.Done) c.primary else null)
             }
             Column(Modifier.weight(1f).padding(start = 16.dp)) {
-                Field("Dimensione", ui.size)
-                Field("Sul telefono", ui.done, Modifier.padding(top = 14.dp))
+                Field(stringResource(R.string.details_size), ui.size)
+                Field(stringResource(R.string.details_on_phone), ui.done, Modifier.padding(top = 14.dp))
             }
         }
         // Seleziona (icon only) | Carica | Scarica ora
@@ -123,14 +124,14 @@ fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Uni
                 content = if (selected) c.onSecondaryContainer else c.onSurface,
                 onClick = { selected = onSelect() }, modifier = Modifier.width(56.dp),
                 icon = if (selected) R.drawable.ic_check else R.drawable.ic_select_all,
-                description = if (selected) "Selezionata, tocca per togliere" else "Seleziona",
+                description = if (selected) stringResource(R.string.cd_selected_tap) else stringResource(R.string.select),
             )
             Box(Modifier.size(2.dp))
             GroupButton(
                 when (immich) {
-                    ImmichMark.None -> "Immich"
-                    ImmichMark.Queued -> "In coda"
-                    ImmichMark.Done -> "Su Immich"
+                    ImmichMark.None -> stringResource(R.string.tile_immich)
+                    ImmichMark.Queued -> stringResource(R.string.queued)
+                    ImmichMark.Done -> stringResource(R.string.details_on_immich)
                 },
                 first = false, middle = true,
                 container = when (immich) {
@@ -152,14 +153,14 @@ fun DetailsContent(ui: DetailsUi, onSelect: () -> Boolean, onDownload: () -> Uni
                 },
                 textSize = 14,
                 description = when (immich) {
-                    ImmichMark.None -> "Invia a Immich"
-                    ImmichMark.Queued -> "In coda per Immich, tocca per annullare"
-                    ImmichMark.Done -> "Già su Immich"
+                    ImmichMark.None -> stringResource(R.string.send_to_immich)
+                    ImmichMark.Queued -> stringResource(R.string.cd_queued_tap)
+                    ImmichMark.Done -> stringResource(R.string.already_on_immich)
                 },
             )
             Box(Modifier.size(2.dp))
             GroupButton(
-                "Scarica ora", first = false, container = c.primary, content = c.onPrimary,
+                stringResource(R.string.download_now), first = false, container = c.primary, content = c.onPrimary,
                 onClick = onDownload, modifier = Modifier.weight(1.2f), enabled = ui.canDownload, icon = R.drawable.ic_download,
                 textSize = 14,
             )

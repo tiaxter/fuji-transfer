@@ -137,7 +137,7 @@ class TransferService : Service() {
         // every command to the camera, its answer, time and bytes: into the log file (shared with "Condividi")
         com.fujixfer.core.PtpSession.wire = java.util.function.Consumer<String> { DebugLog.detail("ptp $it") }
         nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Trasferimenti", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel(CHANNEL, getString(R.string.notif_channel), NotificationManager.IMPORTANCE_LOW))
         prefs = getSharedPreferences("fuji", Context.MODE_PRIVATE)
         metaStore = MetaStore(this)
         // in the log, to tell a drop caused by the phone (screen off, app in background) from one by the camera
@@ -240,7 +240,7 @@ class TransferService : Service() {
                 val handles = cmd.getLongArrayExtra(EXTRA_HANDLES) ?: LongArray(0)
                 pendingDownloads.add(handles)
                 // while the list is being read, the listing runs it between two groups (see onIdle)
-                if (listing) setStatus("Download richiesto: parte appena possibile…")
+                if (listing) setStatus(getString(R.string.st_download_requested))
                 io.execute { runPendingDownloads() }
             }
         }
@@ -339,13 +339,13 @@ class TransferService : Service() {
         TransferState.connected = false
         TransferState.objects = emptyList()
         TransferState.connectionLabel = label
-        TransferState.cameraName = if (label == "USB") "Camera USB" else "Camera"
+        TransferState.cameraName = getString(if (label == "USB") R.string.camera_usb else R.string.camera_label)
         TransferState.connectStep = 0
         TransferState.retryNote = ""
         Thumbs.reset()
         TransferState.previewMissing = emptySet() // another body or mode may have the copies
         thumbExif = null
-        setStatus("Connessione…")
+        setStatus(getString(R.string.st_connecting))
         acquireLocks()
         try {
             listingKey = null
@@ -389,7 +389,7 @@ class TransferService : Service() {
                         TransferState.listTotal = total
                         TransferState.connected = true
                         TransferState.busy = false
-                        setStatus("Leggo l'elenco delle foto: $done di $total…")
+                        setStatus(getString(R.string.st_listing_n, done, total), steady = true)
                     }
 
                     override fun priority(): List<Long>? = days.wanted(TransferState.wantedDays)
@@ -423,21 +423,22 @@ class TransferService : Service() {
             TransferState.connected = true
             scheduleThumbs() // requests made during the listing that it did not get to
             io.execute { scanMeta(eng) } // positions and films, in the background, after the thumbnails
-            setStatus("Connesso: ${list.size} file sulla camera")
-            updateNotification("Connesso — ${list.size} file", 0, 0, force = true)
+            setStatus(getString(R.string.st_connected_n, list.size), steady = true)
+            updateNotification(getString(R.string.notif_connected_n, list.size), 0, 0, force = true)
         } catch (e: Exception) {
             if (cancelRequested || e is TransferEngine.CancelledException) {
                 DebugLog.add("connessione annullata")
                 teardown()
                 TransferState.objects = emptyList()
-                setStatus("Non connesso")
+                setStatus(getString(R.string.st_not_connected))
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return
             }
             logPhases("errore")
             DebugLog.add("eccezione: $e")
-            setStatus("Connessione non riuscita: ${e.message}", error = true)
+            TransferState.errorDetail = e.message ?: e.toString()
+            setStatus(getString(R.string.st_connect_failed, e.message ?: e.toString()), error = true)
             teardown()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -604,12 +605,9 @@ class TransferService : Service() {
 
     /** Registration from scratch: the camera must be showing "pairing" in its Bluetooth settings. */
     private fun pairNewCamera(phone: String): Pair<BleGattLink, FujiBle.Pairing> {
-        setStatus("Cerco una camera in modalità abbinamento…")
-        val found = BleScanner.find(this, 60_000) { it.pairingMode } ?: throw IOException(
-            "Nessuna camera in modalità abbinamento. Sulla camera apri le impostazioni Bluetooth e scegli " +
-                "\"Registrazione abbinamento\", poi riprova.",
-        )
-        setStatus("Camera trovata: collegamento Bluetooth…")
+        setStatus(getString(R.string.st_pair_search))
+        val found = BleScanner.find(this, 60_000) { it.pairingMode } ?: throw IOException(getString(R.string.ex_no_pairing_camera))
+        setStatus(getString(R.string.st_found_linking))
         val link = openBle(found.device, 3, 15_000)
         return link to FujiBle.pair(link, found.advert, phone, bleLog)
     }
@@ -619,11 +617,11 @@ class TransferService : Service() {
      * knows first (XApp may hold the link, and then the camera does not advertise), then scans.
      */
     private fun connectKnownCamera(stored: FujiBle.Pairing?, phone: String): Pair<BleGattLink, FujiBle.Pairing> {
-        setStatus("Cerco la camera tra i dispositivi del telefono…")
+        setStatus(getString(R.string.st_known_search))
         var lastError: IOException? = null
         for (dev in BleScanner.knownCandidates(this, stored?.address)) {
             val already = BleScanner.isConnected(this, dev)
-            setStatus("Provo ${dev.name ?: dev.address}${if (already) " (già collegata)" else ""}…")
+            setStatus(getString(if (already) R.string.st_trying_linked else R.string.st_trying, dev.name ?: dev.address))
             val link = try {
                 openBle(dev, 1, if (already) 10_000 else 8_000)
             } catch (e: IOException) {
@@ -639,14 +637,11 @@ class TransferService : Service() {
                 closeBle()
             }
         }
-        setStatus("Cerco la camera via Bluetooth…")
+        setStatus(getString(R.string.st_ble_search))
         val found = BleScanner.find(this, 30_000) { adv ->
             stored == null || stored.matches(adv) || stored.address.equals(adv.address, ignoreCase = true)
-        } ?: throw lastError ?: IOException(
-            "Camera non trovata via Bluetooth. Accendila e controlla che il suo Bluetooth sia attivo " +
-                "(se XApp è aperta, chiudila e riprova).",
-        )
-        setStatus("Camera trovata: collegamento Bluetooth…")
+        } ?: throw lastError ?: IOException(getString(R.string.ex_ble_not_found))
+        setStatus(getString(R.string.st_found_linking))
         val link = openBle(found.device, 3, 15_000)
         return link to handshake(link, stored, found.device.address, found.advert.name, phone)
     }
@@ -693,7 +688,7 @@ class TransferService : Service() {
                 if (attempt < attempts) Thread.sleep(800)
             }
         }
-        throw last ?: IOException("Collegamento Bluetooth non riuscito")
+        throw last ?: IOException(getString(R.string.ex_ble_link))
     }
 
     private fun closeBle() {
@@ -709,7 +704,7 @@ class TransferService : Service() {
         TransferState.connectStep = 2
         TransferState.publish()
         if (cancelRequested) throw TransferEngine.CancelledException()
-        setStatus("Mi collego al Wi-Fi ${c.ssid}… (conferma la richiesta di Android se compare)")
+        setStatus(getString(R.string.st_joining, c.ssid))
         // Like XApp (WiFiHandOverService): always the exact name + BSSID, retried as is. A request without the
         // BSSID is a "pattern" for Android: it asks for confirmation every time and never remembers the approval,
         // which is why the confirmation kept coming back after the old name-only fallback.
@@ -748,14 +743,14 @@ class TransferService : Service() {
         if (Build.VERSION.SDK_INT >= 31) {
             val missing = listOf(android.Manifest.permission.BLUETOOTH_SCAN, android.Manifest.permission.BLUETOOTH_CONNECT)
                 .any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
-            if (missing) throw IOException("Consenti \"Dispositivi nelle vicinanze\" all'app (Impostazioni › App › Fuji Transfer › Autorizzazioni)")
+            if (missing) throw IOException(getString(R.string.ex_nearby))
         } else {
             if (checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-                throw IOException("Su Android 10-11 la ricerca Bluetooth richiede il permesso di posizione")
+                throw IOException(getString(R.string.ex_location_perm))
             }
             val lm = getSystemService(LocationManager::class.java)
             if (lm != null && !lm.isLocationEnabled) {
-                throw IOException("Attiva la geolocalizzazione: su Android 10-11 serve alla ricerca Bluetooth")
+                throw IOException(getString(R.string.ex_location_on))
             }
         }
     }
@@ -773,7 +768,7 @@ class TransferService : Service() {
             @Suppress("DEPRECATION")
             val existing = cm.allNetworks.firstOrNull {
                 cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
-            } ?: throw IOException("Nessuna rete Wi-Fi attiva. Collega il telefono al Wi-Fi della camera o inserisci il suo nome.")
+            } ?: throw IOException(getString(R.string.ex_no_wifi))
             wifiNetwork = existing
         } else {
             TransferState.connectStep = 2
@@ -869,7 +864,7 @@ class TransferService : Service() {
             }
 
             override fun onUnavailable() {
-                ready.completeExceptionally(IOException("Rete della camera non trovata o connessione rifiutata"))
+                ready.completeExceptionally(IOException(getString(R.string.ex_net_refused)))
             }
         }
         netCallback = cb
@@ -880,7 +875,7 @@ class TransferService : Service() {
         } catch (e: Exception) {
             unregisterNetwork()
             if (cancelRequested) throw TransferEngine.CancelledException()
-            throw IOException(e.cause?.message ?: "Timeout connessione Wi-Fi alla camera")
+            throw IOException(e.cause?.message ?: getString(R.string.ex_wifi_timeout))
         } finally {
             joining = null
         }
@@ -989,7 +984,7 @@ class TransferService : Service() {
         val name = phoneName()
         val options = FujiTcpLink.Options().apply {
             onWaitingForCamera = Runnable {
-                setStatus("La camera è in attesa del dispositivo: sto aprendo la sessione…")
+                setStatus(getString(R.string.st_cam_waiting))
             }
             onTrace = java.util.function.Consumer { DebugLog.add("  $it") }
         }
@@ -998,10 +993,10 @@ class TransferService : Service() {
             override fun trace(message: String) = DebugLog.add("  $message")
 
             override fun waitingForAccess() =
-                setStatus("La camera non ha ancora dato l'accesso alle foto: se sul display compare una richiesta di collegamento, accettala")
+                setStatus(getString(R.string.st_cam_access))
 
             override fun slowModeChange() =
-                setStatus("La camera sta passando al trasferimento foto: se sul display compare una richiesta, accettala")
+                setStatus(getString(R.string.st_cam_switching))
         }
         return TransferEngine.Connector {
             if (cancelRequested) throw TransferEngine.CancelledException()
@@ -1010,7 +1005,7 @@ class TransferService : Service() {
             // a socket to it fails with EPERM, so check it is still alive
             val net = wifiNetwork?.takeIf { !cameraWifiOff && cm.getNetworkCapabilities(it) != null } ?: rejoinViaBle()
             TransferState.connectStep = 3
-            setStatus("Wi-Fi collegato: apro la sessione con la camera…")
+            setStatus(getString(R.string.st_session_opening))
             val session = FujiTcpLink.openSession(
                 net.socketFactory, CAMERA_HOST, FujiTcpLink.DEFAULT_PORT, guid, name, options, fujiOptions, progress,
             )
@@ -1018,16 +1013,16 @@ class TransferService : Service() {
             val f = session.fujiWifi()
             val mode = if (f?.isXapp == true) "XApp (ClientState 20)" else "classico (ClientState ${f?.clientMode()})"
             DebugLog.add("  sessione Fuji pronta: modo $mode, stato camera ${f?.cameraState()}, ${f?.objectCount()} oggetti")
-            setStatus("Sessione aperta: leggo l'elenco delle foto…")
+            setStatus(getString(R.string.st_session_open), steady = true)
             session
         }
     }
 
     private fun rejoinViaBle(): Network {
-        val link = ble?.takeIf { it.isConnected } ?: throw IOException("Rete Wi-Fi della camera persa")
-        setStatus("Wi-Fi della camera perso: lo riaccendo via Bluetooth…")
+        val link = ble?.takeIf { it.isConnected } ?: throw IOException(getString(R.string.ex_wifi_lost))
+        setStatus(getString(R.string.st_wifi_relaunch))
         launchAndJoin(link, blePairing?.red ?: false)
-        return wifiNetwork ?: throw IOException("Rete Wi-Fi della camera persa")
+        return wifiNetwork ?: throw IOException(getString(R.string.ex_wifi_lost))
     }
 
     // ------------------------------------------------------------------ USB
@@ -1036,8 +1031,10 @@ class TransferService : Service() {
         TransferState.connectStep = 3
         val usb = getSystemService(UsbManager::class.java)
         val device = usb.deviceList.values.firstOrNull { it.deviceName == deviceName }
-            ?: throw IOException("Dispositivo USB non trovato")
+            ?: throw IOException(getString(R.string.ex_usb_missing))
         var attempts = 0
+        // card-reader mode: said in the app's language before the protocol code gets to it
+        if (UsbCamera.hasMassStorageOnly(device)) throw IOException(getString(R.string.ex_usb_mass_storage))
         return TransferEngine.Connector { UsbCamera.openSession(usb, device, attempts++ > 0) }
     }
 
@@ -1046,7 +1043,7 @@ class TransferService : Service() {
     private fun download(handles: LongArray) {
         val eng = engine
         if (eng == null) {
-            setStatus("Non connesso")
+            setStatus(getString(R.string.st_not_connected))
             return
         }
         cancelRequested = false
@@ -1096,7 +1093,7 @@ class TransferService : Service() {
                 TransferState.progressName = listed.filename
                 TransferState.progressDone = 0
                 TransferState.progressTotal = listed.size
-                setStatus("Scarico ${i + 1}/${wanted.size}: ${listed.filename}")
+                setStatus(getString(R.string.st_downloading, i + 1, wanted.size, listed.filename))
                 try {
                     val info = eng.sizeForDownload(listed) // size, handle and original files in one request
                     if (info.size != listed.size || info.handle != listed.handle) {
@@ -1164,23 +1161,25 @@ class TransferService : Service() {
             TransferState.busy = false
             TransferState.progressName = ""
             val msg = when {
-                cancelRequested -> "Annullato ($ok scaricati)"
-                stoppedAfter -> "Fermato: $ok file scaricati"
-                droppedByCamera -> "Interrotto: la camera ha spento il Wi-Fi ($ok scaricati)"
-                failed > 0 -> "Finito: $ok scaricati, $failed con errori"
-                else -> "Finito: $ok file scaricati"
+                cancelRequested -> getString(R.string.st_cancelled, ok)
+                stoppedAfter -> getString(R.string.st_stopped, ok)
+                droppedByCamera -> getString(R.string.st_dropped, ok)
+                failed > 0 -> getString(R.string.st_done_errors, ok, failed)
+                else -> getString(R.string.st_done, ok)
             }
-            setStatus(msg, error = failed > 0)
+            setStatus(msg, error = failed > 0, steady = !cancelRequested && !droppedByCamera && failed == 0)
             // the notification says what is left to do, in the app's words
+            val onPhone = resources.getQuantityString(R.plurals.notif_on_phone, ok, ok)
+            val doneTitle = resources.getQuantityString(R.plurals.notif_done_title, ok, ok)
             val (title, text) = when {
-                cancelRequested -> "Download annullato" to (if (ok == 1) "1 file è sul telefono." else "$ok file sono sul telefono.")
-                droppedByCamera -> "La camera ha spento il Wi‑Fi" to
-                    ((if (ok == 1) "1 file è sul telefono." else "$ok file sono sul telefono.") +
-                        (if (partialName.isNotEmpty()) " $partialName riparte dal $partialPercent%." else "") + " Tocca per riprendere.")
-                failed > 0 -> "Download finito · $ok file" to "$failed con errori: i dettagli sono nel registro."
-                immichOffer(ok) -> "Download finito · $ok file" to "Inviarli anche a Immich?"
-                immichQueued > 0 -> "Download finito · $ok file" to "$immichQueued in coda per Immich."
-                else -> "Download finito · $ok file" to "Foto e video in Fujifilm, RAW in Download/Fujifilm."
+                cancelRequested -> getString(R.string.notif_cancelled) to onPhone
+                droppedByCamera -> getString(R.string.drop_title) to
+                    (onPhone + (if (partialName.isNotEmpty()) " " + getString(R.string.notif_partial, partialName, partialPercent) else "") +
+                        " " + getString(R.string.notif_tap_resume))
+                failed > 0 -> doneTitle to resources.getQuantityString(R.plurals.notif_failed, failed, failed)
+                immichOffer(ok) -> doneTitle to getString(R.string.ask_send_too)
+                immichQueued > 0 -> doneTitle to getString(R.string.notif_queued, immichQueued)
+                else -> doneTitle to getString(R.string.notif_where)
             }
             updateNotification(text, 0, 0, force = true, title = title)
         }
@@ -1216,7 +1215,7 @@ class TransferService : Service() {
                 updateNotification(
                     "${info?.filename.orEmpty()} · $filePct%",
                     p, 1000, force = false,
-                    title = "Download ${TransferState.batchIndex} di ${TransferState.batchCount}",
+                    title = getString(R.string.download_n_of_m, TransferState.batchIndex, TransferState.batchCount),
                 )
             }
         }
@@ -1225,10 +1224,10 @@ class TransferService : Service() {
             if (info != null && TransferState.progressName.isNotEmpty()) {
                 val t = TransferState.progressTotal
                 val pct = if (t > 0) (TransferState.progressDone * 100 / t).toInt() else 0
-                TransferState.retryNote = "Il segnale è caduto un attimo: riprendo dal $pct%, niente da riscaricare."
+                TransferState.retryNote = getString(R.string.retry_note, pct)
             }
             DebugLog.add("  caduta: ${cause?.javaClass?.simpleName}${netAge()}")
-            setStatus("Connessione instabile, riprovo ($attempt)… ${cause?.message.orEmpty()}")
+            setStatus(getString(R.string.st_unstable, attempt, cause?.message.orEmpty()))
         }
 
         override fun isCancelled() = cancelRequested
@@ -1296,7 +1295,7 @@ class TransferService : Service() {
             DebugLog.add("  originale ${listed.filename}: lasciato a metà (il visualizzatore è passato ad altro)")
         } catch (e: IOException) {
             DebugLog.add("  originale ${listed.filename} non scaricato: ${e.message}")
-            if (TransferState.viewHandle == h) TransferState.viewError = e.message ?: "Download non riuscito"
+            if (TransferState.viewHandle == h) TransferState.viewError = e.message ?: getString(R.string.download_failed)
         } finally {
             eng.galleryMode() // the listing goes on: not in the heavier original-file mode
         }
@@ -1441,7 +1440,7 @@ class TransferService : Service() {
                         "  posizioni: interrotto dopo ${System.currentTimeMillis() - c0} ms su ${chunk.size} scatti " +
                             "(${e.message}), riprendo alla prossima connessione",
                     )
-                    setStatus("Collegamento con la camera perso: mi ricollego al prossimo download o anteprima")
+                    setStatus(getString(R.string.st_link_lost))
                     break
                 }
                 val perShot = (System.currentTimeMillis() - c0) / chunk.size
@@ -1594,7 +1593,7 @@ class TransferService : Service() {
         val fuji = eng.session().fujiWifi() ?: return // USB: nothing to protect
         val started = System.currentTimeMillis()
         DebugLog.add("  elenco in pausa: schermo spento (download chiesti e segnale alla camera ogni 4 s continuano)")
-        setStatus("In pausa a schermo spento: riprendo quando riaccendi")
+        setStatus(getString(R.string.st_paused_screen_off))
         var lastPoll = started
         var polls = 0
         while (screenOff && !cancelRequested && engine === eng) {
@@ -1613,7 +1612,7 @@ class TransferService : Service() {
         }
         DebugLog.add("  elenco ripreso dopo ${(System.currentTimeMillis() - started) / 1000} s a schermo spento, " +
             "$polls segnali alla camera")
-        if (!cancelRequested) setStatus(if (listing) "Leggo l'elenco delle foto…" else "Connesso")
+        if (!cancelRequested) setStatus(getString(if (listing) R.string.st_listing else R.string.st_connected), steady = true)
     }
 
     /** The Wi-Fi join (DebugLog.wifiJoinedAt) whose quiet window was already logged. */
@@ -1728,11 +1727,11 @@ class TransferService : Service() {
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
                 parseDate(info.captureDate)?.let { put(MediaStore.MediaColumns.DATE_MODIFIED, it / 1000) }
             }
-            uri = resolver.insert(collection, values) ?: throw IOException("MediaStore ha rifiutato ${info.filename}")
+            uri = resolver.insert(collection, values) ?: throw IOException(getString(R.string.ex_mediastore, info.filename))
             rememberPending(key, uri)
         }
         try {
-            val pfd = resolver.openFileDescriptor(uri, "rw") ?: throw IOException("File non apribile")
+            val pfd = resolver.openFileDescriptor(uri, "rw") ?: throw IOException(getString(R.string.ex_cannot_open))
             // AutoCloseOutputStream owns the descriptor: closing the stream closes it, once
             ParcelFileDescriptor.AutoCloseOutputStream(pfd).use { out -> eng.download(info, out.channel, listener()) }
         } catch (e: IOException) {
@@ -1740,13 +1739,13 @@ class TransferService : Service() {
         } catch (e: Exception) {
             forgetPending(key)
             resolver.delete(uri, null, null)
-            throw IOException("Salvataggio fallito: ${e.message}")
+            throw IOException(getString(R.string.ex_save_failed, e.message.orEmpty()))
         }
         try {
             val done = ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }
             resolver.update(uri, done, null, null)
         } catch (e: Exception) {
-            throw IOException("Salvataggio fallito: ${e.message}")
+            throw IOException(getString(R.string.ex_save_failed, e.message.orEmpty()))
         }
         forgetPending(key)
         ImmichSync.rememberMedia(this, doneKey(info), uri) // so "Carica" knows which item is this camera file
@@ -1790,7 +1789,7 @@ class TransferService : Service() {
         TransferState.objects = emptyList()
         TransferState.connected = false
         TransferState.busy = false
-        setStatus("Non connesso")
+        setStatus(getString(R.string.st_not_connected))
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -1813,7 +1812,7 @@ class TransferService : Service() {
     private fun teardown() {
         DebugLog.detail("chiusura della connessione (teardown)")
         DebugLog.wifiJoinedAt = 0L
-        joining?.completeExceptionally(IOException("Annullato"))
+        joining?.completeExceptionally(IOException(getString(R.string.ex_cancelled)))
         unregisterNetwork()
         closeBle()
         engine?.close() // last: it waits for a connection in progress, which the steps above make fail
@@ -1878,7 +1877,9 @@ class TransferService : Service() {
         return ok > 0 && im.configured && im.mode == ImmichSync.MODE_OFFER
     }
 
-    private fun setStatus(s: String, error: Boolean = false) {
+    /** [steady]: a state the gallery shows quietly ("Connesso", "Finito"), not as a passing line under the bar. */
+    private fun setStatus(s: String, error: Boolean = false, steady: Boolean = false) {
+        TransferState.statusSteady = steady
         DebugLog.add((if (error) "ERRORE " else "» ") + s)
         TransferState.statusIsError = error
         TransferState.status = s
@@ -1910,7 +1911,7 @@ class TransferService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .addAction(Notification.Action.Builder(
-                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), "Annulla", cancel,
+                    Icon.createWithResource(this, android.R.drawable.ic_menu_close_clear_cancel), getString(R.string.cancel), cancel,
                 ).build())
             .apply { if (max > 0) setProgress(max, progress, false) }
             .build()

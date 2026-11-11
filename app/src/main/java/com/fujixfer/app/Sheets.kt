@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,7 +34,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
-// ------------------------------------------------------------------ "Annullare il download?"
+// ------------------------------------------------------------------ stringResource(R.string.cancel_dl_title)
 
 /**
  * What cancelling would do (design "Download · cosa succede se annulli"). [doneFiles]/[doneSize]: already on the
@@ -53,36 +55,36 @@ fun CancelSheet(info: CancelInfo, onKeep: () -> Unit, onCancel: () -> Unit, onFi
         scrimColor = Color.Black.copy(alpha = 0.32f), dragHandle = { SheetHandle() },
     ) {
         Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Text("Annullare il download?", Modifier.padding(horizontal = 4.dp), color = c.onSurface, style = type(22, 28, medium = true))
+            Text(stringResource(R.string.cancel_dl_title), Modifier.padding(horizontal = 4.dp), color = c.onSurface, style = type(22, 28, medium = true))
             val rows = ArrayList<Triple<String, String, OutcomeKind>>()
             if (info.doneFiles > 0) rows.add(Triple(
-                if (info.doneFiles == 1) "1 file resta sul telefono" else "${info.doneFiles} file restano sul telefono",
-                "Già finiti, ${info.doneSize}", OutcomeKind.Kept,
+                pluralStringResource(R.plurals.cancel_kept, info.doneFiles, info.doneFiles),
+                stringResource(R.string.cancel_kept_sub, info.doneSize), OutcomeKind.Kept,
             ))
             if (info.current.isNotEmpty()) rows.add(Triple(
-                "${info.current} si ferma al ${info.currentPercent}%",
-                "Era a ${info.currentSize}: riparte da lì la prossima volta", OutcomeKind.Stopped,
+                stringResource(R.string.cancel_stops, info.current, info.currentPercent),
+                stringResource(R.string.cancel_stops_sub, info.currentSize), OutcomeKind.Stopped,
             ))
             if (info.queued > 0) rows.add(Triple(
-                if (info.queued == 1) "1 file in coda non parte" else "${info.queued} file in coda non partono",
-                "Restano sulla camera e selezionati: puoi scaricarli dopo", OutcomeKind.Skipped,
+                pluralStringResource(R.plurals.cancel_skipped, info.queued, info.queued),
+                stringResource(R.string.cancel_skipped_sub), OutcomeKind.Skipped,
             ))
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 rows.forEachIndexed { i, (title, sub, kind) -> OutcomeRow(title, sub, kind, i == 0, i == rows.lastIndex) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 GroupButton(
-                    "Continua", first = true, container = c.primary, content = c.onPrimary,
+                    stringResource(R.string.continue_), first = true, container = c.primary, content = c.onPrimary,
                     onClick = onKeep, modifier = Modifier.weight(1f), height = 56.dp, textSize = 14,
                 )
                 GroupButton(
-                    "Annulla download", first = false, container = c.errorContainer, content = c.onErrorContainer,
+                    stringResource(R.string.cancel_dl), first = false, container = c.errorContainer, content = c.onErrorContainer,
                     onClick = onCancel, modifier = Modifier.weight(1f), height = 56.dp, textSize = 14,
                 )
             }
             if (info.current.isNotEmpty() && info.queued > 0) {
                 FujiButton(
-                    "Finisci ${info.current}, poi fermati", onFinishCurrent, Modifier.align(Alignment.CenterHorizontally),
+                    stringResource(R.string.finish_then_stop, info.current), onFinishCurrent, Modifier.align(Alignment.CenterHorizontally),
                     kind = ButtonKind.Text, height = 44.dp,
                 )
             }
@@ -143,7 +145,7 @@ fun DisconnectSheet(info: DisconnectInfo, onStay: () -> Unit, onDisconnect: () -
                     Icon(painterResource(R.drawable.ic_camera), null, Modifier.size(24.dp), tint = c.onPrimaryContainer)
                 }
                 Column(Modifier.padding(start = 14.dp)) {
-                    Text("Scollegare la ${info.camera}?", color = c.onSurface, style = type(22, 28, medium = true))
+                    Text(stringResource(R.string.disconnect_title, info.camera), color = c.onSurface, style = type(22, 28, medium = true))
                     Text(info.since, color = c.onSurfaceVariant, style = type(14, 20))
                 }
             }
@@ -152,26 +154,25 @@ fun DisconnectSheet(info: DisconnectInfo, onStay: () -> Unit, onDisconnect: () -
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 if (info.usb) {
-                    Line(R.drawable.ic_usb, "Puoi staccare il cavo dalla camera")
+                    Line(R.drawable.ic_usb, stringResource(R.string.disc_usb))
                 } else {
-                    Line(R.drawable.ic_wifi, "Il telefono lascia la rete della camera e torna sulla sua")
+                    Line(R.drawable.ic_wifi, stringResource(R.string.disc_wifi))
                 }
-                Line(R.drawable.ic_retry, "Per rivedere le foto serve una nuova connessione")
+                Line(R.drawable.ic_retry, stringResource(R.string.disc_again))
                 if (info.immichQueued > 0) {
                     Line(
                         R.drawable.ic_cloud_queue,
-                        (if (info.immichQueued == 1) "1 file in coda per Immich parte" else "${info.immichQueued} file in coda per Immich partono") +
-                            if (info.wifiOnly) " quando il telefono è su una rete Wi‑Fi" else " appena c'è la rete",
+                        pluralStringResource(if (info.wifiOnly) R.plurals.disc_immich_wifi else R.plurals.disc_immich_any, info.immichQueued, info.immichQueued),
                     )
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 GroupButton(
-                    "Resta collegato", first = true, container = c.surfaceContainerHighest, content = c.onSurface,
+                    stringResource(R.string.stay_connected), first = true, container = c.surfaceContainerHighest, content = c.onSurface,
                     onClick = onStay, modifier = Modifier.weight(1f), height = 56.dp, textSize = 14,
                 )
                 GroupButton(
-                    "Scollega", first = false, container = c.primary, content = c.onPrimary,
+                    stringResource(R.string.disconnect_short), first = false, container = c.primary, content = c.onPrimary,
                     onClick = onDisconnect, modifier = Modifier.weight(1f), height = 56.dp, textSize = 14,
                 )
             }
@@ -210,12 +211,12 @@ fun DimScreen(ui: DownloadUi, onWake: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(painterResource(R.drawable.ic_phone), null, Modifier.size(16.dp), tint = dimText)
-            Text("Schermo acceso finché scarica", Modifier.padding(start = 8.dp), color = dimText, style = type(13, 18, medium = true))
+            Text(stringResource(R.string.dim_keep), Modifier.padding(start = 8.dp), color = dimText, style = type(13, 18, medium = true))
         }
         Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
             Row {
                 Text("${ui.batchIndex}", Modifier.alignByBaseline(), color = Color(0xFFA9D3BC), style = type(72, 80))
-                Text(" di ${ui.batch.size}", Modifier.alignByBaseline(), color = Color(0xFF6F9583), style = type(32, 40))
+                Text(stringResource(R.string.of_m, ui.batch.size), Modifier.alignByBaseline(), color = Color(0xFF6F9583), style = type(32, 40))
             }
             if (name.isNotEmpty()) Text("$name · $pct%", color = dimText, style = type(15, 22))
             WavyBar(
@@ -225,7 +226,7 @@ fun DimScreen(ui: DownloadUi, onWake: () -> Unit) {
             Text("${ui.bytes} · ${ui.eta}", color = Color(0xFF6F9583), style = type(14, 20))
         }
         Text(
-            "Luce al minimo per risparmiare batteria\nTocca per tornare",
+            stringResource(R.string.dim_hint),
             Modifier.align(Alignment.BottomCenter).padding(bottom = 36.dp), color = Color(0xFF557564),
             textAlign = TextAlign.Center, style = type(13, 18),
         )

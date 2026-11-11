@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.em
@@ -57,9 +58,9 @@ import kotlinx.coroutines.withContext
  * "Immich" (design "Impostazioni · Immich"). Two phases:
  * - not signed in: address, Email e password | Chiave API, "Accedi". The password is used once to log in and is
  *   never stored: the app keeps the session token.
- * - signed in: the server ("Verifica"), address and account ("Cambia" = sign in again), "Quando inviare" (only
- *   when asked / ask at the end of a download / always), "Cosa inviare" (for the automatic queue), "Invia solo con
- *   Wi-Fi", the way to the uploads list and "Scollega Immich".
+ * - signed in: the server ("Verifica"), address and account (stringResource(R.string.im_change) = sign in again), stringResource(R.string.im_when) (only
+ *   when asked / ask at the end of a download / always), stringResource(R.string.im_what) (for the automatic queue), "Invia solo con
+ *   Wi-Fi", the way to the uploads list and stringResource(R.string.im_unlink).
  * Every choice is saved as soon as it is made: there is no "Salva".
  */
 @Composable
@@ -115,7 +116,7 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
 
     fun signIn() {
         if (url.isBlank()) {
-            error = "Inserisci l'indirizzo del server"
+            error = ctx.getString(R.string.im_need_url)
             return
         }
         checking = true
@@ -123,7 +124,7 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
         val s = saved.copy(url = url, key = if (useLogin) "" else key, useLogin = useLogin, email = email, token = if (useLogin) "" else saved.token)
         val pw = password
         scope.launch {
-            val r = withContext(Dispatchers.IO) { runCatching { ImmichSync.verify(s, pw) } }
+            val r = withContext(Dispatchers.IO) { runCatching { ImmichSync.verify(ctx, s, pw) } }
             checking = false
             r.onSuccess { (checked, text) ->
                 password = ""
@@ -133,7 +134,7 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                 linked = true
                 DebugLog.add("Immich: accesso riuscito ($text)")
             }.onFailure { e ->
-                error = e.message ?: "Server non raggiungibile"
+                error = e.message ?: ctx.getString(R.string.im_unreachable)
             }
         }
     }
@@ -141,9 +142,9 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
     Column(Modifier.fillMaxSize().imePadding()) {
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
-                Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back), tint = c.onSurface)
             }
-            Text("Immich", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text(stringResource(R.string.tile_immich), Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
         }
 
         Column(
@@ -152,21 +153,21 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
         ) {
             if (!linked) {
                 Text(
-                    "Collega il tuo server Immich. Le foto restano sul telefono: su Immich va solo una copia, e solo di quelle che scegli tu.",
+                    stringResource(R.string.im_intro),
                     Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(14, 20),
                 )
-                Field(url, { url = it; error = "" }, "Indirizzo del server", R.drawable.ic_globe,
-                    support = "Con la porta, come nell'app web", keyboard = KeyboardType.Uri)
+                Field(url, { url = it; error = "" }, stringResource(R.string.im_url), R.drawable.ic_globe,
+                    support = stringResource(R.string.im_url_sub), keyboard = KeyboardType.Uri)
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     GroupButton(
-                        "Email e password", first = true,
+                        stringResource(R.string.im_login), first = true,
                         container = if (useLogin) c.primary else c.surfaceContainerHigh,
                         content = if (useLogin) c.onPrimary else c.onSurface,
                         onClick = { useLogin = true; error = "" }, modifier = Modifier.weight(if (useLogin) 1.25f else 1f),
                         icon = if (useLogin) R.drawable.ic_check else null, height = 48.dp, textSize = 14,
                     )
                     GroupButton(
-                        "Chiave API", first = false,
+                        stringResource(R.string.im_key), first = false,
                         container = if (!useLogin) c.primary else c.surfaceContainerHigh,
                         content = if (!useLogin) c.onPrimary else c.onSurface,
                         onClick = { useLogin = false; error = "" }, modifier = Modifier.weight(if (!useLogin) 1.25f else 1f),
@@ -174,17 +175,17 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     )
                 }
                 if (useLogin) {
-                    Field(email, { email = it; error = "" }, "Email", R.drawable.ic_person, keyboard = KeyboardType.Email)
+                    Field(email, { email = it; error = "" }, stringResource(R.string.im_email), R.drawable.ic_person, keyboard = KeyboardType.Email)
                     Field(
-                        password, { password = it; error = "" }, "Password", R.drawable.ic_lock,
+                        password, { password = it; error = "" }, stringResource(R.string.im_password), R.drawable.ic_lock,
                         secret = !show, onToggle = { show = !show }, keyboard = KeyboardType.Password,
-                        support = "Non viene salvata: serve solo per ottenere l'accesso.",
+                        support = stringResource(R.string.im_password_sub),
                     )
                 } else {
                     Field(
-                        key, { key = it; error = "" }, "Chiave API", R.drawable.ic_key,
+                        key, { key = it; error = "" }, stringResource(R.string.im_key), R.drawable.ic_key,
                         secret = !show, onToggle = { show = !show }, keyboard = KeyboardType.Password,
-                        support = "Immich → Impostazioni account → Chiavi API",
+                        support = stringResource(R.string.im_key_sub),
                     )
                 }
                 if (error.isNotEmpty()) {
@@ -196,17 +197,17 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                 StatusCard(
                     problem = blocked,
                     line = when {
-                        checkedOk -> "$host · risponde"
+                        checkedOk -> stringResource(R.string.im_answers, host)
                         saved.useLogin -> saved.email
-                        else -> "Chiave API"
+                        else -> stringResource(R.string.im_key)
                     },
-                    sub = if (checkedOk) "Verificato ora" + (if (version.isNotEmpty()) " · $version" else "")
+                    sub = if (checkedOk) stringResource(R.string.im_checked_now) + (if (version.isNotEmpty()) " · $version" else "")
                     else host + (if (version.isNotEmpty()) " · $version" else ""),
                     checking = verifying,
                     onVerify = {
                         verifying = true
                         scope.launch {
-                            val r = withContext(Dispatchers.IO) { runCatching { ImmichSync.verify(saved, "") } }
+                            val r = withContext(Dispatchers.IO) { runCatching { ImmichSync.verify(ctx, saved, "") } }
                             verifying = false
                             r.onSuccess { (_, text) ->
                                 ImmichSync.saveServerInfo(ctx, text)
@@ -215,7 +216,7 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                                 verifyError = ""
                             }.onFailure { e ->
                                 checkedOk = false
-                                verifyError = e.message ?: "Server non raggiungibile"
+                                verifyError = e.message ?: ctx.getString(R.string.im_unreachable)
                             }
                         }
                     },
@@ -224,25 +225,25 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     Text(verifyError, Modifier.padding(horizontal = 4.dp), color = c.error, style = type(14, 20))
                 }
 
-                SectionTitle("Server e account")
+                SectionTitle(stringResource(R.string.im_server_account))
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    InfoRow("Indirizzo del server", saved.url, groupShape(0, 2), null, {})
+                    InfoRow(stringResource(R.string.im_url), saved.url, groupShape(0, 2), null, {})
                     InfoRow(
-                        if (saved.useLogin) saved.email else "Chiave API",
-                        if (saved.useLogin) "Accesso con email e password" else "Accesso con chiave API",
-                        groupShape(1, 2), "Cambia",
+                        if (saved.useLogin) saved.email else stringResource(R.string.im_key),
+                        if (saved.useLogin) stringResource(R.string.im_login_with_password) else stringResource(R.string.im_login_with_key),
+                        groupShape(1, 2), stringResource(R.string.im_change),
                     ) { signOut() }
                 }
                 Text(
-                    "Per cambiare indirizzo o account tocca Cambia e accedi di nuovo.",
+                    stringResource(R.string.im_change_hint),
                     Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(12, 16),
                 )
 
-                SectionTitle("Quando inviare")
+                SectionTitle(stringResource(R.string.im_when))
                 val modes = listOf(
-                    Triple(ImmichSync.MODE_ASK, "Solo quando lo chiedo", "In galleria scegli le foto e tocchi Immich"),
-                    Triple(ImmichSync.MODE_OFFER, "Chiedi a fine download", "Una domanda dopo ogni lotto: sì o no"),
-                    Triple(ImmichSync.MODE_AUTO, "Sempre, dopo ogni download", "Le foto appena scaricate vanno in coda"),
+                    Triple(ImmichSync.MODE_ASK, stringResource(R.string.im_mode_ask), stringResource(R.string.im_mode_ask_sub)),
+                    Triple(ImmichSync.MODE_OFFER, stringResource(R.string.im_mode_offer), stringResource(R.string.im_mode_offer_sub)),
+                    Triple(ImmichSync.MODE_AUTO, stringResource(R.string.im_mode_auto), stringResource(R.string.im_mode_auto_sub)),
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     modes.forEachIndexed { i, (id, title, sub) ->
@@ -252,10 +253,10 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     }
                 }
 
-                SectionTitle("Cosa inviare")
+                SectionTitle(stringResource(R.string.im_what))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
-                        ImmichSync.KIND_PHOTO to "Foto JPG", ImmichSync.KIND_RAW to "RAW (RAF)", ImmichSync.KIND_VIDEO to "Video",
+                        ImmichSync.KIND_PHOTO to stringResource(R.string.im_kind_jpg), ImmichSync.KIND_RAW to stringResource(R.string.im_kind_raw), ImmichSync.KIND_VIDEO to stringResource(R.string.im_kind_video),
                     ).forEach { (id, label) ->
                         KindChip(label, id in saved.kinds) {
                             val k = if (id in saved.kinds) saved.kinds - id else saved.kinds + id
@@ -264,17 +265,17 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
                     }
                 }
                 Text(
-                    "Vale per «Sempre, dopo ogni download». Le foto che scegli tu partono comunque.",
+                    stringResource(R.string.im_kinds_note),
                     Modifier.padding(horizontal = 4.dp), color = c.onSurfaceVariant, style = type(12, 16),
                 )
 
-                SectionTitle("Rete")
+                SectionTitle(stringResource(R.string.im_network))
                 Column(
                     Modifier.padding(bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
                         .background(c.surfaceContainer).padding(horizontal = 16.dp, vertical = 2.dp),
                 ) {
                     ToggleRow(
-                        "Invia solo con Wi‑Fi", "Mai con i dati mobili. Se il Wi‑Fi non raggiunge il server, aspetta.", saved.wifiOnly,
+                        stringResource(R.string.im_wifi_only), stringResource(R.string.im_wifi_only_sub), saved.wifiOnly,
                     ) { update(saved.copy(wifiOnly = it)) }
                 }
             }
@@ -283,24 +284,24 @@ fun ImmichScreen(onBack: () -> Unit, onUploads: () -> Unit) {
         Column(Modifier.fillMaxWidth().padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             if (!linked) {
                 FujiButton(
-                    if (checking) "Accesso…" else "Accedi", { signIn() }, Modifier.fillMaxWidth(),
+                    if (checking) stringResource(R.string.im_signing_in) else stringResource(R.string.im_sign_in), { signIn() }, Modifier.fillMaxWidth(),
                     kind = ButtonKind.Filled, enabled = !checking,
                 )
                 Text(
-                    "Dopo l'accesso scegli quando inviare. Nulla parte da solo.",
+                    stringResource(R.string.im_after_login),
                     Modifier.padding(top = 8.dp), color = c.onSurfaceVariant, style = type(12, 16),
                 )
             } else {
                 FujiButton(
-                    if (queued > 0) "Vedi gli invii · $queued in coda" else "Vedi gli invii", onUploads,
+                    if (queued > 0) stringResource(R.string.im_see_uploads_n, queued) else stringResource(R.string.im_see_uploads), onUploads,
                     Modifier.fillMaxWidth(), kind = ButtonKind.Tonal, height = 56.dp, icon = R.drawable.ic_cloud_queue,
                 )
                 FujiButton(
-                    "Scollega Immich", { signOut() }, Modifier.padding(top = 4.dp).fillMaxWidth(),
+                    stringResource(R.string.im_unlink), { signOut() }, Modifier.padding(top = 4.dp).fillMaxWidth(),
                     kind = ButtonKind.Text, contentColor = c.error,
                 )
                 Text(
-                    "Le foto già su Immich restano lì. Qui si ferma solo l'invio.",
+                    stringResource(R.string.im_unlink_note),
                     color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(13, 18),
                 )
             }
@@ -341,7 +342,7 @@ private fun StatusCard(problem: String, line: String, sub: String, checking: Boo
             )
         }
         Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
-            Text(if (bad) "Accesso da rifare" else "Collegato", color = fg, style = type(18, 24, medium = true))
+            Text(if (bad) stringResource(R.string.im_sign_in_again) else stringResource(R.string.im_connected), color = fg, style = type(18, 24, medium = true))
             Text(if (bad) problem else line, color = fg, style = type(14, 20), maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (!bad && sub.isNotEmpty()) Text(sub, color = fg.copy(alpha = 0.85f), style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -350,12 +351,12 @@ private fun StatusCard(problem: String, line: String, sub: String, checking: Boo
                 .clickable(enabled = !checking, role = Role.Button, onClick = onVerify).padding(horizontal = 14.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(if (checking) "Verifico…" else "Verifica", color = if (bad) c.onError else c.onTertiary, style = type(14, 20, medium = true))
+            Text(if (checking) stringResource(R.string.im_checking) else stringResource(R.string.im_check), color = if (bad) c.onError else c.onTertiary, style = type(14, 20, medium = true))
         }
     }
 }
 
-/** A row of "Server e account": what, and a small tonal button ([action] null = none). */
+/** A row of stringResource(R.string.im_server_account): what, and a small tonal button ([action] null = none). */
 @Composable
 private fun InfoRow(title: String, sub: String, shape: RoundedCornerShape, action: String?, onAction: () -> Unit) {
     val c = MaterialTheme.colorScheme
@@ -432,7 +433,7 @@ private fun Field(
                 IconButton(onClick = onToggle) {
                     Icon(
                         painterResource(if (secret) R.drawable.ic_eye_off else R.drawable.ic_eye),
-                        contentDescription = if (secret) "Mostra" else "Nascondi", tint = c.onSurfaceVariant,
+                        contentDescription = if (secret) stringResource(R.string.show) else stringResource(R.string.hide), tint = c.onSurfaceVariant,
                     )
                 }
             }

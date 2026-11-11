@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import android.graphics.Bitmap
 import android.view.View
 import androidx.compose.animation.core.Animatable
@@ -443,7 +444,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
         ) {
             // previous
             Box(Modifier.fillMaxSize().graphicsLayer { translationX = offsetX - pageW }) {
-                if (!animating) s.prev?.let { Page(it, "Foto precedente") }
+                if (!animating) s.prev?.let { Page(it, stringResource(R.string.cd_prev_photo)) }
             }
             // current: slides, follows a vertical drag (shrinking a little), zooms
             Box(
@@ -466,7 +467,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                     }
                 } else if (s.imageVisible && bmp != null) {
                     Page(
-                        bmp, "Foto",
+                        bmp, stringResource(R.string.cd_photo),
                         Modifier.graphicsLayer {
                             scaleX = zs.zoom
                             scaleY = zs.zoom
@@ -490,10 +491,11 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                 }
                 // a video is fetched only when asked: swiping past videos costs the camera nothing
                 if (s.playVisible && !animating) {
+                    val playCd = stringResource(R.string.cd_play)
                     Box(
                         Modifier.align(Alignment.Center).size(76.dp).clip(CircleShape).background(Color(0x99000000))
                             .clickable(onClick = a.onPlay).padding(22.dp)
-                            .semantics { contentDescription = "Scarica e guarda il video" },
+                            .semantics { contentDescription = playCd },
                     ) {
                         Icon(painterResource(R.drawable.ic_play), null, Modifier.fillMaxSize(), tint = c)
                     }
@@ -501,7 +503,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
             }
             // next
             Box(Modifier.fillMaxSize().graphicsLayer { translationX = offsetX + pageW }) {
-                if (!animating) s.next?.let { Page(it, "Foto successiva") }
+                if (!animating) s.next?.let { Page(it, stringResource(R.string.cd_next_photo)) }
             }
         }
 
@@ -605,7 +607,8 @@ fun ViewerStrip(items: List<ObjectInfo>, current: Int, tick: Int, onPick: (Int) 
         if (first[0] || abs(i - state.firstVisibleItemIndex) > 12) state.scrollToItem(i) else state.animateScrollToItem(i)
         first[0] = false
     }
-    BoxWithConstraints(Modifier.fillMaxWidth().height(64.dp).semantics { contentDescription = "Altre foto" }) {
+    val stripCd = stringResource(R.string.cd_other_photos)
+    BoxWithConstraints(Modifier.fillMaxWidth().height(64.dp).semantics { contentDescription = stripCd }) {
         LazyRow(
             Modifier.fillMaxSize(),
             state = state,

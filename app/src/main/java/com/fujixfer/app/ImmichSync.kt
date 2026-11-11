@@ -269,15 +269,15 @@ object ImmichSync {
      * Checks address and access; with [password] (email mode) logs in first. Returns the settings with the new
      * token and the status line. Network: call off the main thread.
      */
-    fun verify(s: Settings, password: String): Pair<Settings, String> {
+    fun verify(c: Context, s: Settings, password: String): Pair<Settings, String> {
         var now = s
         if (s.useLogin && password.isNotEmpty()) now = s.copy(token = ImmichClient.login(s.url, s.email, password))
-        if (now.credential.isBlank()) throw IOException(if (now.useLogin) "inserisci email e password" else "inserisci la chiave API")
+        if (now.credential.isBlank()) throw IOException(c.getString(if (now.useLogin) R.string.im_need_login else R.string.im_need_key))
         val api = client(now)
         api.test()
         val v = api.version().split('.').take(2).joinToString(".")
         val n = api.assetCount()
-        val count = if (n < 0) "" else " · " + java.text.NumberFormat.getIntegerInstance(java.util.Locale.ITALY).format(n) + " foto"
+        val count = if (n < 0) "" else " · " + c.resources.getQuantityString(R.plurals.im_n_photos, n.toInt().coerceAtLeast(0), java.text.NumberFormat.getIntegerInstance().format(n))
         return now to "Immich $v$count"
     }
 
@@ -406,7 +406,7 @@ object ImmichSync {
             progress = "Immich ${i + 1}/${todo.size}: ${item.name}"
             try {
                 val src = object : ImmichClient.Source {
-                    override fun open() = c.contentResolver.openInputStream(item.uri) ?: throw IOException("File non apribile")
+                    override fun open() = c.contentResolver.openInputStream(item.uri) ?: throw IOException(c.getString(R.string.ex_cannot_open))
                     override fun length() = item.size
                 }
                 val outcome = api.sync(item.name, src, item.modifiedMs, item.modifiedMs)
@@ -424,12 +424,12 @@ object ImmichSync {
             } catch (e: ImmichClient.ImmichException) {
                 if (e.code == 401 || e.code == 403 || e.code == 404) {
                     // address or access: every file would get the same answer
-                    setBlocked(c, e.message ?: "accesso rifiutato")
+                    setBlocked(c, e.message ?: c.getString(R.string.im_access_refused))
                     return finish(c, false, "Immich: ${e.message}", synced)
                 }
                 if (e.permanent) {
                     refused++
-                    markFailed(c, camKey, e.message ?: "rifiutato dal server")
+                    markFailed(c, camKey, e.message ?: c.getString(R.string.im_refused_by_server))
                     DebugLog.add("Immich: ${item.name} rifiutato: ${e.message}")
                     continue
                 }
@@ -442,7 +442,7 @@ object ImmichSync {
                 return finish(c, true, "Immich non raggiungibile (${e.message}): riprovo più tardi", synced)
             } catch (e: SecurityException) {
                 refused++
-                markFailed(c, camKey, "file non leggibile")
+                markFailed(c, camKey, c.getString(R.string.im_unreadable))
                 DebugLog.add("Immich: ${item.name} non leggibile (${e.message})")
             }
         }

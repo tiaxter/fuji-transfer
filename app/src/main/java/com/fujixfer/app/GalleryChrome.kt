@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
@@ -55,7 +56,7 @@ import androidx.compose.ui.unit.dp
 data class ChipUi(val label: String, val selected: Boolean)
 
 data class GalleryTopUi(
-    val title: String = "Camera",
+    val title: String = "",
     val info: String = "",
     /** Every shown file is selected: the select-all button turns into "deselect". */
     val allSelected: Boolean = false,
@@ -106,11 +107,12 @@ class GalleryTopActions(
 fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
     val c = MaterialTheme.colorScheme
     var menu by remember { mutableStateOf(false) }
+    val selectAllText = stringResource(if (ui.allSelected) R.string.deselect_all else R.string.select_all)
     Column(Modifier.fillMaxWidth()) {
         // top bar: leave the camera, name and connection, select all, more
         Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = a.onBack) {
-                Icon(painterResource(R.drawable.ic_back), contentDescription = "Disconnetti", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.disconnect), tint = c.onSurface)
             }
             Column(Modifier.weight(1f).padding(start = 4.dp)) {
                 Text(ui.title, color = c.onSurface, style = type(22, 28), maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -126,7 +128,7 @@ fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
             Box(
                 Modifier.size(48.dp).clip(CircleShape).background(if (ui.allSelected) c.secondaryContainer else c.surfaceContainerHighest)
                     .clickable(role = Role.Button, onClick = a.onSelectAll)
-                    .semantics { contentDescription = if (ui.allSelected) "Deseleziona tutto" else "Seleziona tutto" },
+                    .semantics { contentDescription = selectAllText },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -136,13 +138,13 @@ fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
             }
             Box {
                 IconButton(onClick = { menu = true }) {
-                    Icon(painterResource(R.drawable.ic_more), contentDescription = "Altre opzioni", tint = c.onSurfaceVariant)
+                    Icon(painterResource(R.drawable.ic_more), contentDescription = stringResource(R.string.more_options), tint = c.onSurfaceVariant)
                 }
                 DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-                    DropdownMenuItem(text = { Text("Invia a Immich") }, onClick = { menu = false; a.onImmich() })
-                    DropdownMenuItem(text = { Text("Condividi il registro") }, onClick = { menu = false; a.onShareLog() })
-                    DropdownMenuItem(text = { Text("Registro tecnico") }, onClick = { menu = false; a.onLog() })
-                    DropdownMenuItem(text = { Text("Disconnetti") }, onClick = { menu = false; a.onDisconnect() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.send_to_immich)) }, onClick = { menu = false; a.onImmich() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.share_log)) }, onClick = { menu = false; a.onShareLog() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.cd_log)) }, onClick = { menu = false; a.onLog() })
+                    DropdownMenuItem(text = { Text(stringResource(R.string.disconnect)) }, onClick = { menu = false; a.onDisconnect() })
                 }
             }
         }
@@ -164,19 +166,19 @@ fun GalleryTop(ui: GalleryTopUi, a: GalleryTopActions) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             FilterChip(
-                if (ui.dated) ui.dateLabel else "Data", ui.dated, R.drawable.ic_calendar,
+                if (ui.dated) ui.dateLabel else stringResource(R.string.filter_date), ui.dated, R.drawable.ic_calendar,
                 if (ui.dated) R.drawable.ic_close else R.drawable.ic_chevron_down, onClick = a.onDate,
-                onTrailing = if (ui.dated) a.onClearDate else null, trailingDescription = "Togli il filtro data",
+                onTrailing = if (ui.dated) a.onClearDate else null, trailingDescription = stringResource(R.string.filter_date_clear),
             )
             FilterChip(
-                if (ui.area) ui.areaLabel else "Luogo", ui.area, R.drawable.ic_map,
+                if (ui.area) ui.areaLabel else stringResource(R.string.filter_place), ui.area, R.drawable.ic_map,
                 if (ui.area) R.drawable.ic_close else null, onClick = a.onArea,
-                onTrailing = if (ui.area) a.onClearArea else null, trailingDescription = "Togli il filtro luogo",
+                onTrailing = if (ui.area) a.onClearArea else null, trailingDescription = stringResource(R.string.filter_place_clear),
             )
             FilterChip(
-                if (ui.film) ui.filmLabel else "Pellicola", ui.film, R.drawable.ic_film,
+                if (ui.film) ui.filmLabel else stringResource(R.string.filter_film), ui.film, R.drawable.ic_film,
                 if (ui.film) R.drawable.ic_close else R.drawable.ic_chevron_down, onClick = a.onFilm,
-                onTrailing = if (ui.film) a.onClearFilm else null, trailingDescription = "Togli il filtro pellicola",
+                onTrailing = if (ui.film) a.onClearFilm else null, trailingDescription = stringResource(R.string.filter_film_clear),
             )
             Box(Modifier.width(1.dp).height(24.dp).background(c.outlineVariant))
             ui.chips.forEachIndexed { i, chip ->
@@ -279,7 +281,7 @@ data class GalleryBottomUi(
     val stripPercent: Int = 0,
     val stripTitle: String = "",
     val stripSub: String = "",
-    val selTitle: String = "Nessuna selezionata",
+    val selTitle: String = "",
     val selInfo: String = "",
     val canDownload: Boolean = false,
     /** "Immich": the selection goes to Immich (downloaded first where needed). */
@@ -287,7 +289,7 @@ data class GalleryBottomUi(
     /** After "Immich", with nothing selected: "5 foto in coda per Immich" with Annulla ("" = none). */
     val snack: String = "",
     /** Second line of [snack]: when the queued files go up. */
-    val snackSub: String = "Partono col Wi‑Fi, anche ad app chiusa",
+    val snackSub: String = "",
     /** A tip above the selection bar ("Tieni premuto e trascina…"), empty = none. */
     val hint: String = "",
     /** The camera is not there yet: "Scarica" queues the files for when it is (clock instead of the arrow). */
@@ -316,7 +318,7 @@ fun GalleryBottom(
                     Text(ui.stripTitle, color = c.onPrimaryContainer, style = type(14, 20, medium = true), maxLines = 1)
                     Text(ui.stripSub, color = c.onPrimaryContainer, style = type(12, 16), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                Text("Apri", Modifier.padding(start = 8.dp), color = c.onPrimaryContainer, style = type(14, 20, medium = true))
+                Text(stringResource(R.string.open), Modifier.padding(start = 8.dp), color = c.onPrimaryContainer, style = type(14, 20, medium = true))
             }
         }
 
@@ -334,7 +336,7 @@ fun GalleryBottom(
                     Text(ui.snack, color = c.inverseOnSurface, style = type(14, 20, medium = true), maxLines = 1)
                     Text(ui.snackSub, color = c.inverseOnSurface.copy(alpha = 0.85f), style = type(12, 16), maxLines = 2)
                 }
-                FujiButton("Annulla", onUndo, kind = ButtonKind.Text, height = 40.dp, contentColor = c.inversePrimary)
+                FujiButton(stringResource(R.string.cancel), onUndo, kind = ButtonKind.Text, height = 40.dp, contentColor = c.inversePrimary)
             }
         } else {
             if (ui.hint.isNotEmpty()) {
@@ -360,7 +362,7 @@ fun GalleryBottom(
                 ) {
                     if (any) {
                         IconButton(onClick = onClear) {
-                            Icon(painterResource(R.drawable.ic_close), contentDescription = "Annulla selezione", tint = c.onPrimaryContainer)
+                            Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.clear_selection), tint = c.onPrimaryContainer)
                         }
                     }
                     Column(Modifier.weight(1f).padding(start = if (any) 4.dp else 0.dp)) {
@@ -373,15 +375,15 @@ fun GalleryBottom(
                 }
                 Row(Modifier.padding(start = 8.dp)) {
                     ActionTile(
-                        "Immich", R.drawable.ic_cloud_upload, first = true, enabled = ui.canUpload,
+                        stringResource(R.string.tile_immich), R.drawable.ic_cloud_upload, first = true, enabled = ui.canUpload,
                         container = c.secondaryContainer, content = c.onSecondaryContainer,
-                        description = "Invia a Immich le foto selezionate", onClick = onUpload,
+                        description = stringResource(R.string.cd_send_selected), onClick = onUpload,
                     )
                     Box(Modifier.width(2.dp))
                     ActionTile(
-                        if (ui.later) "Accoda" else "Telefono", if (ui.later) R.drawable.ic_clock else R.drawable.ic_download,
+                        if (ui.later) stringResource(R.string.tile_queue) else stringResource(R.string.tile_phone), if (ui.later) R.drawable.ic_clock else R.drawable.ic_download,
                         first = false, enabled = ui.canDownload, container = c.primary, content = c.onPrimary,
-                        description = if (ui.later) "Scarica appena la camera è collegata" else "Salva sul telefono le foto selezionate",
+                        description = if (ui.later) stringResource(R.string.cd_download_later) else stringResource(R.string.cd_save_selected),
                         onClick = onDownload,
                     )
                 }

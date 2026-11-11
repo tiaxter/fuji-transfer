@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,7 +45,7 @@ import com.fujixfer.core.ObjectInfo
 enum class DoneImmich {
     /** Immich not set up, or "Solo quando lo chiedo": nothing to ask. */
     None,
-    /** "Chiedi a fine download": "Inviarli anche a Immich?". */
+    /** "Chiedi a fine download": stringResource(R.string.ask_send_too). */
     Ask,
     /** The files went to the queue (answer yes, or "Sempre"). */
     Queued,
@@ -95,10 +97,10 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
             IconButton(onClick = { if (picking) { picking = false; chosen = emptySet() } else a.onBack() }) {
                 Icon(
                     painterResource(if (picking) R.drawable.ic_close else R.drawable.ic_back),
-                    contentDescription = if (picking) "Annulla" else "Torna alla galleria", tint = c.onSurface,
+                    contentDescription = if (picking) stringResource(R.string.cancel) else stringResource(R.string.back_to_gallery), tint = c.onSurface,
                 )
             }
-            Text(if (picking) "Scegli cosa inviare" else "Download", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text(if (picking) stringResource(R.string.pick_what_to_send) else stringResource(R.string.download_title), Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
         }
 
         if (ui.dropped) {
@@ -115,13 +117,13 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
                 }
                 Column(Modifier.padding(start = 16.dp)) {
                     Text(
-                        if (ui.saved.size == 1) "1 file sul telefono" else "${ui.saved.size} file sul telefono",
+                        pluralStringResource(R.plurals.done_on_phone, ui.saved.size, ui.saved.size),
                         color = c.onPrimaryContainer, style = type(28, 36, medium = true),
                     )
                     Text(ui.summary, color = c.onPrimaryContainer, style = type(14, 20))
                     if (ui.failed > 0) {
                         Text(
-                            if (ui.failed == 1) "1 file non scaricato: è nel registro" else "${ui.failed} file non scaricati: sono nel registro",
+                            pluralStringResource(R.plurals.done_failed, ui.failed, ui.failed),
                             color = c.onPrimaryContainer, style = type(14, 20, medium = true),
                         )
                     }
@@ -136,14 +138,13 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
                 ) {
                     Icon(painterResource(R.drawable.ic_cloud_queue), null, Modifier.size(22.dp), tint = c.onTertiaryContainer)
                     Text(
-                        (if (ui.queuedCount == 1) "1 file in coda" else "${ui.queuedCount} file in coda") +
-                            " per Immich: partono appena c'è la rete giusta",
+                        pluralStringResource(R.plurals.done_queued, ui.queuedCount, ui.queuedCount),
                         Modifier.weight(1f).padding(start = 12.dp), color = c.onTertiaryContainer, style = type(14, 20),
                     )
-                    FujiButton("Vedi", a.onSeeUploads, kind = ButtonKind.Text, height = 40.dp, contentColor = c.onTertiaryContainer)
+                    FujiButton(stringResource(R.string.see), a.onSeeUploads, kind = ButtonKind.Text, height = 40.dp, contentColor = c.onTertiaryContainer)
                 }
                 DoneImmich.Declined -> Text(
-                    "Niente su Immich. Puoi inviarle più tardi dalla galleria: selezionale e tocca Immich.",
+                    stringResource(R.string.done_nothing_immich),
                     Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp).fillMaxWidth().clip(RoundedCornerShape(24.dp))
                         .background(c.surfaceContainer).padding(16.dp),
                     color = c.onSurfaceVariant, style = type(14, 20),
@@ -152,7 +153,7 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
             }
         } else {
             Text(
-                "Tocca i file da mandare su Immich. Quelli che ha già vengono saltati.",
+                stringResource(R.string.pick_hint),
                 Modifier.padding(start = 20.dp, end = 20.dp, bottom = 4.dp), color = c.onSurfaceVariant, style = type(14, 20),
             )
         }
@@ -164,18 +165,18 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                if (!picking) "File" else when (chosen.size) { 0 -> "Nessuno scelto"; 1 -> "1 scelto"; else -> "${chosen.size} scelti" },
+                if (!picking) stringResource(R.string.files_header) else if (chosen.isEmpty()) stringResource(R.string.none_chosen) else pluralStringResource(R.plurals.n_chosen, chosen.size, chosen.size),
                 Modifier.weight(1f), color = c.onSurface, style = type(16, 24, medium = true),
             )
             if (picking) {
                 FujiButton(
-                    if (all) "Deseleziona tutti" else "Seleziona tutti",
+                    if (all) stringResource(R.string.deselect_all_files) else stringResource(R.string.select_all_files),
                     { chosen = if (all) emptySet() else ui.saved.mapTo(HashSet()) { it.handle } },
                     kind = ButtonKind.Text, height = 40.dp, contentColor = c.tertiary,
                 )
             } else {
                 Text(
-                    if (ui.dropped) "${ui.saved.size} di ${ui.batchSize}" else "${ui.saved.size} completati",
+                    if (ui.dropped) stringResource(R.string.n_of_m, ui.saved.size, ui.batchSize) else stringResource(R.string.n_completed, ui.saved.size),
                     Modifier.padding(end = 12.dp), color = c.onSurfaceVariant, style = type(13, 18, medium = true),
                 )
             }
@@ -194,16 +195,13 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
             if (picking) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                     GroupButton(
-                        "Annulla", first = true, container = c.surfaceContainerHighest, content = c.onSurface,
+                        stringResource(R.string.cancel), first = true, container = c.surfaceContainerHighest, content = c.onSurface,
                         onClick = { picking = false; chosen = emptySet() }, modifier = Modifier.weight(1f), height = 56.dp, textSize = 14,
                     )
                     val mb = ui.saved.filter { it.handle in chosen }.sumOf { it.size }
                     GroupButton(
-                        when (chosen.size) {
-                            0 -> "Scegli i file"
-                            1 -> "Invia 1 file · " + formatMb(mb)
-                            else -> "Invia ${chosen.size} file · " + formatMb(mb)
-                        },
+                        if (chosen.isEmpty()) stringResource(R.string.pick_files)
+                        else pluralStringResource(R.plurals.send_n_files, chosen.size, chosen.size, formatMb(mb)),
                         first = false, container = if (chosen.isEmpty()) c.surfaceContainerHighest else c.tertiary,
                         content = if (chosen.isEmpty()) c.onSurfaceVariant else c.onTertiary,
                         onClick = {
@@ -214,7 +212,7 @@ fun DownloadDoneScreen(ui: DoneUi, a: DoneActions) {
                     )
                 }
             } else if (!ui.dropped) {
-                FujiButton("Torna alla galleria", a.onBack, Modifier.fillMaxWidth(), kind = ButtonKind.Filled)
+                FujiButton(stringResource(R.string.back_to_gallery), a.onBack, Modifier.fillMaxWidth(), kind = ButtonKind.Filled)
             }
         }
     }
@@ -232,20 +230,20 @@ private fun AskCard(onNo: () -> Unit, onPick: () -> Unit) {
                 Icon(painterResource(R.drawable.ic_cloud_upload), null, Modifier.size(22.dp), tint = c.onTertiary)
             }
             Column(Modifier.padding(start = 14.dp)) {
-                Text("Inviarli anche a Immich?", color = c.onTertiaryContainer, style = type(18, 24, medium = true))
+                Text(stringResource(R.string.ask_send_too), color = c.onTertiaryContainer, style = type(18, 24, medium = true))
                 Text(
-                    "Partono appena c'è la rete giusta, anche ad app chiusa. Quelli che Immich ha già vengono saltati.",
+                    stringResource(R.string.ask_send_too_sub),
                     Modifier.padding(top = 2.dp), color = c.onTertiaryContainer, style = type(14, 20),
                 )
             }
         }
         Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             GroupButton(
-                "Non ora", first = true, container = c.surface, content = c.onSurface,
+                stringResource(R.string.not_now), first = true, container = c.surface, content = c.onSurface,
                 onClick = onNo, modifier = Modifier.weight(1f), height = 48.dp, textSize = 14,
             )
             GroupButton(
-                "Scegli i file", first = false, container = c.tertiary, content = c.onTertiary,
+                stringResource(R.string.pick_files), first = false, container = c.tertiary, content = c.onTertiary,
                 onClick = onPick, modifier = Modifier.weight(1.6f), height = 48.dp, textSize = 14,
             )
         }
@@ -262,9 +260,9 @@ private fun DroppedPart(ui: DoneUi, a: DoneActions) {
     ) {
         Row(Modifier.fillMaxWidth()) {
             Text("${ui.saved.size}", Modifier.alignByBaseline(), color = c.onSurface, style = type(40, 48, medium = true))
-            Text(" di ${ui.batchSize}", Modifier.weight(1f).alignByBaseline(), color = c.onSurface, style = type(22, 28))
+            Text(stringResource(R.string.of_m, ui.batchSize), Modifier.weight(1f).alignByBaseline(), color = c.onSurface, style = type(22, 28))
         }
-        Text("Interrotto", Modifier.padding(top = 4.dp), color = c.onSurfaceVariant, style = type(14, 20))
+        Text(stringResource(R.string.interrupted), Modifier.padding(top = 4.dp), color = c.onSurfaceVariant, style = type(14, 20))
     }
     Column(
         Modifier.padding(start = 16.dp, top = 12.dp, end = 16.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
@@ -275,28 +273,28 @@ private fun DroppedPart(ui: DoneUi, a: DoneActions) {
                 Icon(painterResource(R.drawable.ic_wifi_off), null, Modifier.size(22.dp), tint = c.onError)
             }
             Column(Modifier.padding(start = 14.dp)) {
-                Text("La camera ha spento il Wi‑Fi", color = c.onErrorContainer, style = type(18, 24, medium = true))
+                Text(stringResource(R.string.drop_title), color = c.onErrorContainer, style = type(18, 24, medium = true))
                 Text(
-                    if (ui.droppedScreenOff) "È successo mentre lo schermo del telefono era spento." else "È successo durante il download.",
+                    if (ui.droppedScreenOff) stringResource(R.string.drop_screen_off) else stringResource(R.string.drop_during),
                     Modifier.padding(top = 2.dp), color = c.onErrorContainer, style = type(14, 20),
                 )
             }
         }
         Column(Modifier.padding(start = 58.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (ui.saved.isNotEmpty()) {
-                Bullet(R.drawable.ic_check, if (ui.saved.size == 1) "1 file è già sul telefono" else "${ui.saved.size} file sono già sul telefono")
+                Bullet(R.drawable.ic_check, pluralStringResource(R.plurals.drop_kept, ui.saved.size, ui.saved.size))
             }
-            if (ui.partialName.isNotEmpty()) Bullet(R.drawable.ic_retry, "${ui.partialName} riparte dal ${ui.partialPercent}%")
+            if (ui.partialName.isNotEmpty()) Bullet(R.drawable.ic_retry, stringResource(R.string.drop_partial, ui.partialName, ui.partialPercent))
             val rest = ui.left - (if (ui.partialName.isNotEmpty()) 1 else 0)
-            if (rest > 0) Bullet(R.drawable.ic_download, if (rest == 1) "1 altro file da scaricare" else "$rest altri file da scaricare")
+            if (rest > 0) Bullet(R.drawable.ic_download, pluralStringResource(R.plurals.drop_rest, rest, rest))
         }
         Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             GroupButton(
-                "Più tardi", first = true, container = c.surface, content = c.onSurface,
+                stringResource(R.string.later), first = true, container = c.surface, content = c.onSurface,
                 onClick = a.onBack, modifier = Modifier.weight(1f), height = 48.dp, textSize = 14,
             )
             GroupButton(
-                "Riconnetti e riprendi", first = false, container = c.primary, content = c.onPrimary,
+                stringResource(R.string.reconnect_resume), first = false, container = c.primary, content = c.onPrimary,
                 onClick = a.onReconnect, modifier = Modifier.weight(1.5f), height = 48.dp, textSize = 14, icon = R.drawable.ic_retry,
             )
         }
@@ -314,8 +312,8 @@ fun KeepAwakeRow(on: Boolean, onChange: (Boolean) -> Unit, modifier: Modifier = 
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Tieni lo schermo acceso", color = c.onSurface, style = type(16, 22))
-            Text("Durante i download, a luce minima", color = c.onSurfaceVariant, style = type(13, 18))
+            Text(stringResource(R.string.keep_awake), color = c.onSurface, style = type(16, 22))
+            Text(stringResource(R.string.keep_awake_sub), color = c.onSurfaceVariant, style = type(13, 18))
         }
         Switch(
             checked = on, onCheckedChange = onChange,
@@ -366,11 +364,11 @@ private fun DoneRow(info: ObjectInfo, size: String, picking: Boolean, on: Boolea
             }
         } else {
             Box(Modifier.size(32.dp).clip(CircleShape).background(c.primary), contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.ic_check), contentDescription = "Sul telefono", Modifier.size(16.dp), tint = c.onPrimary)
+                Icon(painterResource(R.drawable.ic_check), contentDescription = stringResource(R.string.details_on_phone), Modifier.size(16.dp), tint = c.onPrimary)
             }
         }
     }
 }
 
 private fun formatMb(b: Long): String =
-    if (b >= 100_000_000) "${b / 1_000_000} MB" else String.format(java.util.Locale.ITALY, "%.1f MB", b / 1e6)
+    if (b >= 100_000_000) "${b / 1_000_000} MB" else String.format(java.util.Locale.getDefault(), "%.1f MB", b / 1e6)

@@ -1,5 +1,6 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.stringResource
 import android.graphics.Bitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,9 +43,9 @@ fun PreviewScreen(ui: PreviewUi, onBack: () -> Unit, onSelect: () -> Boolean, on
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.weight(1f).fillMaxWidth().padding(top = 64.dp), contentAlignment = Alignment.Center) {
                 if (bmp != null) {
-                    Image(bmp, contentDescription = "Anteprima", Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+                    Image(bmp, contentDescription = stringResource(R.string.cd_preview), Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
                 } else {
-                    Text("Anteprima non disponibile", color = Color(0xB3FFFFFF), style = type(14, 20))
+                    Text(stringResource(R.string.preview_missing), color = Color(0xB3FFFFFF), style = type(14, 20))
                 }
             }
             Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(c.surfaceContainerLow)) {
@@ -58,7 +59,7 @@ fun PreviewScreen(ui: PreviewUi, onBack: () -> Unit, onSelect: () -> Boolean, on
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = Color.White)
+                Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back), tint = Color.White)
             }
             Column(Modifier.weight(1f).padding(start = 4.dp)) {
                 Text(ui.name, color = Color.White, style = type(16, 24, medium = true), maxLines = 1, overflow = TextOverflow.Ellipsis)

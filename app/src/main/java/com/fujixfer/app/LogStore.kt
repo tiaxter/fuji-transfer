@@ -25,13 +25,16 @@ enum class LogKind(val id: String, val label: String) {
             return when {
                 "immich" in m -> IMMICH
                 "wi-fi" in m || "wifi" in m || "rete della" in m || "rete principale" in m || "connessione alla rete" in m ||
+                    "network" in m || "joining" in m ||
                     "dhcp" in m || "onlost" in m || "onlosing" in m || "collegamento locale" in m || m.startsWith("caduta") -> WIFI
                 m.startsWith("app in ") || m.startsWith("avvio") || m.startsWith("schermo") || m.startsWith("telefono") ||
                     m.startsWith("video") || m.startsWith("visore") || m.startsWith("decoder") ||
                     "ottimizzazione batteria" in m -> APP
                 m.startsWith("ble") || "ptp" in m || "elenco" in m || "originale" in m || "miniatur" in m || "anteprima" in m ||
                     "posizioni" in m || "galleria" in m || "sessione" in m || "metadati" in m || "giorni" in m ||
-                    "abbinamento" in m || "candidato" in m || "download" in m || "camera" in m -> CAMERA
+                    "abbinamento" in m || "candidato" in m || "download" in m || "camera" in m ||
+                    // status lines in English, when the app runs in English
+                    "list of photos" in m || "session" in m || "pairing" in m || "preview" in m || "thumbnail" in m -> CAMERA
                 else -> null
             }
         }
@@ -41,7 +44,7 @@ enum class LogKind(val id: String, val label: String) {
             val m = message.trim().lowercase(Locale.ROOT)
             return m.startsWith("errore") || m.startsWith("eccezione") || m.startsWith("caduta") ||
                 "errore" in m || "fallit" in m || "non riuscit" in m || "timeout" in m || "socket chiuso" in m ||
-                "ha spento il suo wi-fi" in m
+                "ha spento il suo wi-fi" in m || "error" in m || "failed" in m || "timed out" in m
         }
     }
 }

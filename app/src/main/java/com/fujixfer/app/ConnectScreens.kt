@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import android.animation.ValueAnimator
 import android.view.animation.OvershootInterpolator
 import androidx.compose.animation.animateContentSize
@@ -80,13 +82,13 @@ data class ConnectUi(
     /** The "Backup" card: Immich set up or not, and what it does ("Carichi tu dalla galleria · 3 in coda"). */
     val backupLinked: Boolean = false,
     val backupSub: String = "",
-    /** "Ultima sessione": when ("Ieri, 18:42") and what came of it; empty = no session yet. */
+    /** stringResource(R.string.last_session): when ("Ieri, 18:42") and what came of it; empty = no session yet. */
     val lastWhen: String = "",
     val lastText: String = "",
     /** Files of the listing saved at the last connection: "Apri la galleria salvata" (0 = none saved). */
     val cachedCount: Int = 0,
     val manualOpen: Boolean = false,
-    val usbStatus: String = "Nessuna camera collegata",
+    val usbStatus: String = "",
 )
 
 class ConnectActions(
@@ -134,9 +136,9 @@ fun ConnectScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Fuji Transfer", Modifier.weight(1f), color = c.onSurface, style = type(24, 32, medium = true))
-            TopIcon(R.drawable.ic_log, "Registro tecnico", a.onLog)
+            TopIcon(R.drawable.ic_log, stringResource(R.string.cd_log), a.onLog)
             Spacer(Modifier.width(8.dp))
-            TopIcon(R.drawable.ic_settings, "Impostazioni", a.onSettings)
+            TopIcon(R.drawable.ic_settings, stringResource(R.string.cd_settings), a.onSettings)
         }
 
         Column(
@@ -150,15 +152,15 @@ fun ConnectScreen(
         // footer
         Column(Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp)) {
             FujiButton(
-                if (ui.useWifi) "Connetti" else "Connetti via USB", a.onConnect, Modifier.fillMaxWidth(),
+                if (ui.useWifi) stringResource(R.string.connect) else stringResource(R.string.connect_usb), a.onConnect, Modifier.fillMaxWidth(),
                 kind = ButtonKind.Filled, enabled = ui.canConnect, height = 64.dp,
                 icon = if (ui.useWifi) R.drawable.ic_wifi else R.drawable.ic_usb,
             )
             if (ui.useWifi) {
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                    FujiButton("Abbina nuova camera", a.onRepair, Modifier.weight(1f), kind = ButtonKind.Text, enabled = ui.canConnect)
+                    FujiButton(stringResource(R.string.pair_new_camera), a.onRepair, Modifier.weight(1f), kind = ButtonKind.Text, enabled = ui.canConnect)
                     FujiButton(
-                        if (ui.manualOpen) "Chiudi manuale" else "Connessione manuale", a.onManualToggle, Modifier.weight(1f),
+                        if (ui.manualOpen) stringResource(R.string.manual_close) else stringResource(R.string.manual_connection), a.onManualToggle, Modifier.weight(1f),
                         kind = ButtonKind.Text,
                     )
                 }
@@ -178,9 +180,9 @@ private fun Segmented(useWifi: Boolean, enabled: Boolean, onWifi: () -> Unit, on
         label = "tabs",
     )
     Row(Modifier.fillMaxWidth().height(48.dp)) {
-        SegButton("Wi-Fi", useWifi, enabled, first = true, onClick = onWifi, modifier = Modifier.weight(w.coerceAtLeast(0.1f)))
+        SegButton(stringResource(R.string.tab_wifi), useWifi, enabled, first = true, onClick = onWifi, modifier = Modifier.weight(w.coerceAtLeast(0.1f)))
         Spacer(Modifier.width(2.dp))
-        SegButton("Cavo USB", !useWifi, enabled, first = false, onClick = onUsb, modifier = Modifier.weight((2.15f - w).coerceAtLeast(0.1f)))
+        SegButton(stringResource(R.string.tab_usb), !useWifi, enabled, first = false, onClick = onUsb, modifier = Modifier.weight((2.15f - w).coerceAtLeast(0.1f)))
     }
 }
 
@@ -240,7 +242,7 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
     ) {
         HeroCircle(R.drawable.ic_camera, badge = if (ui.paired) R.drawable.ic_bluetooth else null)
         Text(
-            "Camera", Modifier.padding(top = 10.dp), color = c.onSurfaceVariant,
+            stringResource(R.string.camera_label), Modifier.padding(top = 10.dp), color = c.onSurfaceVariant,
             style = type(12, 16).copy(letterSpacing = 0.06.em),
         )
         Text(ui.cameraName, color = c.onSurface, textAlign = TextAlign.Center, style = type(32, 40, medium = true))
@@ -271,7 +273,7 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
                 .padding(start = 20.dp, top = 16.dp, end = 16.dp, bottom = 16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Ultima sessione", Modifier.weight(1f), color = c.primary, style = type(14, 20, medium = true))
+                Text(stringResource(R.string.last_session), Modifier.weight(1f), color = c.primary, style = type(14, 20, medium = true))
                 if (ui.lastWhen.isNotEmpty()) Text(ui.lastWhen, color = c.onSurfaceVariant, style = type(13, 18))
             }
             if (ui.lastText.isNotEmpty()) {
@@ -279,7 +281,7 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
             }
             if (ui.cachedCount > 0) {
                 FujiButton(
-                    "Apri la galleria salvata · ${java.text.NumberFormat.getIntegerInstance().format(ui.cachedCount)} file", a.onSavedGallery,
+                    pluralStringResource(R.plurals.open_saved_gallery, ui.cachedCount, java.text.NumberFormat.getIntegerInstance().format(ui.cachedCount)), a.onSavedGallery,
                     Modifier.padding(top = 12.dp).fillMaxWidth(), kind = ButtonKind.Tonal, icon = R.drawable.ic_photos,
                 )
             }
@@ -288,14 +290,14 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
 
     Box(Modifier.padding(top = 12.dp)) { BackupCard(ui.backupLinked, ui.backupSub, a.onImmich) }
 
-    // "Come funziona": folded away, the steps behind a chevron
+    // stringResource(R.string.how_it_works): folded away, the steps behind a chevron
     val turn by animateFloatAsState(if (howOpen) 180f else 0f, tween(200), label = "chevron")
     Row(
         Modifier.padding(top = 4.dp).height(48.dp).clip(RoundedCornerShape(24.dp))
             .clickable(role = Role.Button, onClick = { howOpen = !howOpen }).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("Come funziona", color = c.primary, style = type(14, 20, medium = true))
+        Text(stringResource(R.string.how_it_works), color = c.primary, style = type(14, 20, medium = true))
         Icon(
             painterResource(R.drawable.ic_chevron_down), null,
             Modifier.padding(start = 4.dp).size(20.dp).graphicsLayer { rotationZ = turn }, tint = c.primary,
@@ -303,12 +305,12 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
     }
     if (howOpen) {
         Column(Modifier.animateContentSize()) {
-            HowStep(1, "Trova la camera via Bluetooth", "Anche se è già abbinata a XApp")
-            HowStep(2, "Le fa accendere il Wi‑Fi", "Nome e password arrivano da soli")
-            HowStep(3, "Scegli le foto e scaricale", "Se il segnale cade, riprende da dove era")
+            HowStep(1, stringResource(R.string.how_1), stringResource(R.string.how_1_sub))
+            HowStep(2, stringResource(R.string.how_2), stringResource(R.string.how_2_sub))
+            HowStep(3, stringResource(R.string.how_3), stringResource(R.string.how_3_sub))
             if (ui.paired) {
                 FujiButton(
-                    "Dimentica la camera abbinata", a.onForget, kind = ButtonKind.Text, enabled = ui.canConnect,
+                    stringResource(R.string.forget_paired), a.onForget, kind = ButtonKind.Text, enabled = ui.canConnect,
                     height = 40.dp, contentColor = c.onSurfaceVariant,
                 )
             }
@@ -320,15 +322,15 @@ private fun WifiBody(ui: ConnectUi, ssid: String, onSsid: (String) -> Unit, pass
         Column(
             Modifier.padding(top = 4.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer).padding(16.dp),
         ) {
-            Text("Connessione manuale", Modifier.padding(bottom = 4.dp), color = c.primary, style = type(14, 20, medium = true))
+            Text(stringResource(R.string.manual_connection), Modifier.padding(bottom = 4.dp), color = c.primary, style = type(14, 20, medium = true))
             Text(
-                "Per quando il Wi-Fi è stato acceso dal menu della camera.", Modifier.padding(bottom = 12.dp),
+                stringResource(R.string.manual_hint), Modifier.padding(bottom = 12.dp),
                 color = c.onSurfaceVariant, style = type(14, 20),
             )
-            FujiField(ssid, onSsid, "Nome rete (vuoto = Wi-Fi già collegato)", ui.canConnect, Modifier.fillMaxWidth())
-            FujiField(pass, onPass, "Password della rete (se richiesta)", ui.canConnect, Modifier.padding(top = 8.dp).fillMaxWidth(), password = true)
+            FujiField(ssid, onSsid, stringResource(R.string.manual_ssid), ui.canConnect, Modifier.fillMaxWidth())
+            FujiField(pass, onPass, stringResource(R.string.manual_pass), ui.canConnect, Modifier.padding(top = 8.dp).fillMaxWidth(), password = true)
             FujiButton(
-                "Connetti senza Bluetooth", a.onManualConnect, Modifier.padding(top = 12.dp).fillMaxWidth(),
+                stringResource(R.string.manual_connect), a.onManualConnect, Modifier.padding(top = 12.dp).fillMaxWidth(),
                 kind = ButtonKind.Tonal, enabled = ui.canConnect,
             )
         }
@@ -366,9 +368,9 @@ private fun BackupCard(linked: Boolean, sub: String, onClick: () -> Unit) {
         }
         val fg = if (linked) c.onTertiaryContainer else c.onSurface
         Column(Modifier.weight(1f).padding(start = 14.dp, end = 8.dp)) {
-            Text(if (linked) "Immich · collegato" else "Backup su Immich", color = fg, style = type(16, 22, medium = true))
+            Text(if (linked) stringResource(R.string.backup_linked) else stringResource(R.string.backup_title), color = fg, style = type(16, 22, medium = true))
             Text(
-                if (linked) sub else "Facoltativo: copia le foto sul tuo server",
+                if (linked) sub else stringResource(R.string.backup_sub),
                 color = if (linked) c.onTertiaryContainer else c.onSurfaceVariant, style = type(14, 20),
             )
         }
@@ -378,7 +380,7 @@ private fun BackupCard(linked: Boolean, sub: String, onClick: () -> Unit) {
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                if (linked) "Invii" else "Collega", color = if (linked) c.onTertiary else c.onPrimary,
+                if (linked) stringResource(R.string.backup_uploads) else stringResource(R.string.backup_link), color = if (linked) c.onTertiary else c.onPrimary,
                 style = type(14, 20, medium = true),
             )
         }
@@ -394,10 +396,9 @@ private fun UsbBody(ui: ConnectUi) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         HeroCircle(R.drawable.ic_usb)
-        Text("Collega il cavo", Modifier.padding(top = 16.dp), color = c.onSurface, style = type(24, 30))
+        Text(stringResource(R.string.usb_plug), Modifier.padding(top = 16.dp), color = c.onSurface, style = type(24, 30))
         Text(
-            "Sulla camera scegli una modalità PTP o tethering, non «lettore di schede». " +
-                "Android chiederà il permesso di accedere alla camera.",
+            stringResource(R.string.usb_hint),
             Modifier.padding(top = 12.dp), color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(14, 20),
         )
         val tag = RoundedCornerShape(8.dp)
@@ -432,30 +433,33 @@ data class ConnectingUi(
     val typicalMax: Long = 0,
     /** The elenco delle foto checks against a saved one. */
     val hasCache: Boolean = false,
-    /** Files of the saved listing: "Sfoglia intanto la galleria salvata" (0 = none). */
+    /** Files of the saved listing: stringResource(R.string.browse_saved) (0 = none). */
     val cachedCount: Int = 0,
 )
 
 private val connectSteps = listOf(
-    "Bluetooth e abbinamento",
-    "Wi-Fi della camera",
-    "Collegamento alla rete",
-    "Elenco delle foto",
+    R.string.step_bluetooth,
+    R.string.step_camera_wifi,
+    R.string.step_join,
+    R.string.step_list,
 )
 
-private fun stepSub(k: Int, step: Int, hasCache: Boolean): String = when (k) {
-    0 -> if (k < step) "Camera trovata, abbinamento riconosciuto" else "Cerco la camera, anche se è abbinata a XApp"
-    1 -> if (k < step) "La camera ha acceso il suo Wi-Fi" else "Chiedo alla camera di accendere il suo Wi-Fi"
-    2 -> if (k < step) "Telefono collegato alla camera" else "Android si collega alla camera"
-    else -> if (hasCache) "Solo le novità rispetto all'elenco salvato" else "Leggo cosa c'è sulla scheda"
-}
+@Composable
+private fun stepSub(k: Int, step: Int, hasCache: Boolean): String = stringResource(
+    when (k) {
+        0 -> if (k < step) R.string.step_bluetooth_done else R.string.step_bluetooth_now
+        1 -> if (k < step) R.string.step_camera_wifi_done else R.string.step_camera_wifi_now
+        2 -> if (k < step) R.string.step_join_done else R.string.step_join_now
+        else -> if (hasCache) R.string.step_list_cached else R.string.step_list_new
+    },
+)
 
 /** "5,6 s", "12 s", "1 min 4 s". */
 internal fun seconds(ms: Long, decimals: Boolean = false): String {
     val s = ms / 1000.0
     return when {
         s >= 60 -> "${(s / 60).toInt()} min ${(s % 60).toInt()} s"
-        decimals && s < 10 -> String.format(java.util.Locale.ITALY, "%.1f s", s)
+        decimals && s < 10 -> String.format(java.util.Locale.getDefault(), "%.1f s", s)
         else -> "${s.toInt()} s"
     }
 }
@@ -484,9 +488,9 @@ fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit, onBrowse: () -> Uni
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onCancel) {
-                Icon(painterResource(R.drawable.ic_close), contentDescription = "Annulla", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.cancel), tint = c.onSurface)
             }
-            Text("Connessione", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text(stringResource(R.string.connection_title), Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
         }
 
         Column(
@@ -502,9 +506,10 @@ fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit, onBrowse: () -> Uni
             }
             Text(ui.title, Modifier.padding(top = 12.dp), color = c.onSurface, textAlign = TextAlign.Center, style = type(24, 32, medium = true))
             if (!ui.usb) {
-                val usual = ui.typical.getOrNull(step)?.let { " · di solito circa ${seconds(it)}" } ?: ""
+                val typical = ui.typical.getOrNull(step)
                 Text(
-                    "Passo ${step + 1} di 4$usual", Modifier.padding(top = 2.dp),
+                    if (typical != null) stringResource(R.string.step_of_usually, step + 1, 4, seconds(typical))
+                    else stringResource(R.string.step_of, step + 1, 4), Modifier.padding(top = 2.dp),
                     color = c.onSurfaceVariant, textAlign = TextAlign.Center, style = type(14, 20),
                 )
             }
@@ -514,7 +519,7 @@ fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit, onBrowse: () -> Uni
                 val elapsed = (now - ui.startedAt).coerceAtLeast(0)
                 Column(Modifier.padding(top = 14.dp).fillMaxWidth()) {
                     Row(Modifier.fillMaxWidth()) {
-                        Text("${seconds(elapsed)} trascorsi", Modifier.weight(1f), color = c.onSurface, style = type(13, 18, medium = true))
+                        Text(stringResource(R.string.elapsed, seconds(elapsed)), Modifier.weight(1f), color = c.onSurface, style = type(13, 18, medium = true))
                         if (ui.typicalTotal.isNotEmpty()) Text(ui.typicalTotal, color = c.onSurfaceVariant, style = type(13, 18))
                     }
                     val known = ui.typicalMax > 0
@@ -538,7 +543,7 @@ fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit, onBrowse: () -> Uni
                                 ?: if (ui.stepStartedAt > 0) seconds((now - ui.stepStartedAt).coerceAtLeast(0)) else ""
                             else -> ui.typical.getOrNull(k)?.let { "~${seconds(it)}" } ?: ""
                         }
-                        StepRow(k, step, title, stepSub(k, step, ui.hasCache), time)
+                        StepRow(k, step, stringResource(title), stepSub(k, step, ui.hasCache), time)
                     }
                 }
                 // Android's own dialog for the camera's network is the one thing the user has to do
@@ -549,9 +554,9 @@ fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit, onBrowse: () -> Uni
                     Icon(painterResource(R.drawable.ic_info), null, Modifier.padding(top = 1.dp).size(22.dp), tint = c.onTertiaryContainer)
                     Text(
                         buildAnnotatedString {
-                            append("Se Android chiede di collegarsi alla rete della camera, tocca ")
-                            withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append("Connetti") }
-                            append(".")
+                            append(stringResource(R.string.android_prompt_before))
+                            withStyle(SpanStyle(fontWeight = FontWeight.Medium)) { append(stringResource(R.string.android_prompt_button)) }
+                            append(stringResource(R.string.android_prompt_after))
                         },
                         Modifier.padding(start = 12.dp), color = c.onTertiaryContainer, style = type(14, 20),
                     )
@@ -562,11 +567,11 @@ fun ConnectingScreen(ui: ConnectingUi, onCancel: () -> Unit, onBrowse: () -> Uni
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
             if (ui.cachedCount > 0) {
                 FujiButton(
-                    "Sfoglia intanto la galleria salvata", onBrowse, Modifier.padding(bottom = 8.dp).fillMaxWidth(),
+                    stringResource(R.string.browse_saved), onBrowse, Modifier.padding(bottom = 8.dp).fillMaxWidth(),
                     kind = ButtonKind.Tonal, height = 56.dp, icon = R.drawable.ic_photos,
                 )
             }
-            FujiButton("Annulla", onCancel, Modifier.fillMaxWidth(), kind = ButtonKind.Outlined)
+            FujiButton(stringResource(R.string.cancel), onCancel, Modifier.fillMaxWidth(), kind = ButtonKind.Outlined)
         }
     }
 }
@@ -601,7 +606,7 @@ private fun StepRow(k: Int, step: Int, title: String, sub: String, time: String)
  * actually failed with: it names what went wrong, never a guessed cause.
  */
 data class ErrorUi(
-    val title: String = "Connessione non riuscita",
+    val title: String = "",
     val message: String = "",
     val icon: Int = R.drawable.ic_wifi_off,
     val tips: List<Pair<Int, String>> = emptyList(),
@@ -610,60 +615,64 @@ data class ErrorUi(
     val events: List<ConnectEvent> = emptyList(),
 )
 
-/** One line of "Cosa è successo": a step done (ok) or the one that failed, with its time of day ("15:42:07"). */
+/** One line of stringResource(R.string.what_happened): a step done (ok) or the one that failed, with its time of day ("15:42:07"). */
 data class ConnectEvent(val ok: Boolean, val text: String, val time: String)
 
-private val TIP_NEAR = R.drawable.ic_bluetooth to "Tieni il telefono vicino alla camera, accesa"
-private val TIP_USB = R.drawable.ic_usb to "Se il cavo USB è collegato alla camera, scollegalo"
-private val TIP_APPS = R.drawable.ic_tip_close_apps to "Chiudi le altre app che usano la camera, come XApp"
-
-/** Builds the error screen from the failure message ([status], as the service wrote it) and the last log lines. */
-fun errorUiFor(status: String, log: String): ErrorUi {
-    val msg = status.removePrefix("Connessione non riuscita:").trim()
+/**
+ * Builds the error screen from the failure detail ([detail], the exception's message as the service got it) and
+ * the last log lines. The detail may be in the app's language or, from the protocol code, in English or Italian:
+ * the words looked for are in both.
+ */
+fun errorUiFor(ctx: android.content.Context, detail: String, log: String): ErrorUi {
+    fun s(id: Int) = ctx.getString(id)
+    val TIP_NEAR = R.drawable.ic_bluetooth to s(R.string.tip_near)
+    val TIP_USB = R.drawable.ic_usb to s(R.string.tip_usb)
+    val TIP_APPS = R.drawable.ic_tip_close_apps to s(R.string.tip_apps)
+    fun has(m: String, vararg words: String) = words.any { it in m }
+    val msg = detail.trim()
         .replaceFirstChar { it.uppercase() }
         .let { if (it.isEmpty() || it.endsWith(".") || it.endsWith(")")) it else "$it." }
     val m = msg.lowercase()
     return when {
-        "non ha acceso il wi-fi" in m || "avvio del wi-fi" in m || "nome della rete" in m -> ErrorUi(
-            "La camera non ha acceso il Wi-Fi", msg, R.drawable.ic_wifi_off, listOf(TIP_USB, TIP_APPS, TIP_NEAR), log,
+        has(m, "non ha acceso il wi-fi", "avvio del wi-fi", "nome della rete", "did not turn on its wi-fi", "network name") -> ErrorUi(
+            s(R.string.err_wifi_title), msg, R.drawable.ic_wifi_off, listOf(TIP_USB, TIP_APPS, TIP_NEAR), log,
         )
-        "non risulta abbinata" in m || "abbinamento" in m || "non sembra una fotocamera" in m || "identificazione" in m -> ErrorUi(
-            "Abbinamento non riconosciuto", msg, R.drawable.ic_bluetooth,
+        has(m, "non risulta abbinata", "abbinamento", "non sembra una fotocamera", "identificazione", "pairing", "not look like a camera") -> ErrorUi(
+            s(R.string.err_pairing_title), msg, R.drawable.ic_bluetooth,
             listOf(
-                R.drawable.ic_camera to "Sulla camera: Bluetooth › Registrazione abbinamento, poi «Abbina nuova camera»",
+                R.drawable.ic_camera to s(R.string.tip_pairing),
                 TIP_NEAR,
             ),
             log,
         )
-        "dispositivi nelle vicinanze" in m || "permesso" in m || "geolocalizzazione" in m -> ErrorUi(
-            "Manca un permesso", msg, R.drawable.ic_lock,
-            listOf(R.drawable.ic_phone to "Impostazioni › App › Fuji Transfer › Autorizzazioni"), log,
+        has(m, "dispositivi nelle vicinanze", "permesso", "geolocalizzazione", "nearby devices", "permission", "location") -> ErrorUi(
+            s(R.string.err_permission_title), msg, R.drawable.ic_lock,
+            listOf(R.drawable.ic_phone to s(R.string.tip_permission)), log,
         )
-        "bluetooth" in m -> ErrorUi(
-            "Camera non raggiunta via Bluetooth", msg, R.drawable.ic_bluetooth,
-            listOf(TIP_NEAR, R.drawable.ic_phone to "Controlla che il Bluetooth del telefono sia acceso", TIP_APPS), log,
+        has(m, "bluetooth") -> ErrorUi(
+            s(R.string.err_bluetooth_title), msg, R.drawable.ic_bluetooth,
+            listOf(TIP_NEAR, R.drawable.ic_phone to s(R.string.tip_bluetooth_on), TIP_APPS), log,
         )
-        "usb" in m || "bulk" in m -> ErrorUi(
-            "Camera USB non raggiungibile", msg, R.drawable.ic_usb,
+        has(m, "usb", "bulk") -> ErrorUi(
+            s(R.string.err_usb_title), msg, R.drawable.ic_usb,
             listOf(
-                R.drawable.ic_usb to "Scollega e ricollega il cavo, con la camera accesa",
-                R.drawable.ic_phone to "Se Android chiede l'accesso alla camera USB, consentilo",
+                R.drawable.ic_usb to s(R.string.tip_usb_replug),
+                R.drawable.ic_phone to s(R.string.tip_usb_allow),
             ),
             log,
         )
-        "rete" in m -> ErrorUi(
-            "Rete della camera non raggiunta", msg, R.drawable.ic_wifi_off,
+        has(m, "rete", "network") -> ErrorUi(
+            s(R.string.err_network_title), msg, R.drawable.ic_wifi_off,
             listOf(
-                R.drawable.ic_wifi to "Se Android chiede di collegarsi alla rete della camera, tocca Connetti",
+                R.drawable.ic_wifi to s(R.string.tip_network_prompt),
                 TIP_NEAR, TIP_APPS,
             ),
             log,
         )
-        "sessione" in m || "closed the connection" in m || "cannot connect" in m || "accesso alle foto" in m ||
-            "init reply" in m -> ErrorUi(
-            "La camera non ha aperto la sessione", msg, R.drawable.ic_camera, listOf(TIP_APPS, TIP_NEAR), log,
+        has(m, "sessione", "session", "closed the connection", "cannot connect", "accesso alle foto", "access to the photos", "init reply") -> ErrorUi(
+            s(R.string.err_session_title), msg, R.drawable.ic_camera, listOf(TIP_APPS, TIP_NEAR), log,
         )
-        else -> ErrorUi("Connessione non riuscita", msg, R.drawable.ic_wifi_off, listOf(TIP_NEAR, TIP_USB, TIP_APPS), log)
+        else -> ErrorUi(s(R.string.err_generic_title), msg, R.drawable.ic_wifi_off, listOf(TIP_NEAR, TIP_USB, TIP_APPS), log)
     }
 }
 
@@ -676,9 +685,9 @@ fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onCopy: () -> Unit, onRetry: ()
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) {
-                Icon(painterResource(R.drawable.ic_back), contentDescription = "Indietro", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_back), contentDescription = stringResource(R.string.back), tint = c.onSurface)
             }
-            Text("Connessione", Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
+            Text(stringResource(R.string.connection_title), Modifier.padding(start = 4.dp), color = c.onSurface, style = type(22, 28))
         }
 
         Column(
@@ -705,7 +714,7 @@ fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onCopy: () -> Unit, onRetry: ()
                     Modifier.padding(top = 16.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp)).background(c.surfaceContainer)
                         .padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 8.dp),
                 ) {
-                    Text("Cosa è successo", color = c.primary, style = type(14, 20, medium = true))
+                    Text(stringResource(R.string.what_happened), color = c.primary, style = type(14, 20, medium = true))
                     ui.events.forEach { e -> EventRow(e) }
                 }
             }
@@ -715,20 +724,20 @@ fun ErrorScreen(ui: ErrorUi, onBack: () -> Unit, onCopy: () -> Unit, onRetry: ()
                     Modifier.padding(top = 12.dp, bottom = 8.dp).fillMaxWidth().clip(RoundedCornerShape(28.dp))
                         .background(c.surfaceContainer).padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 8.dp),
                 ) {
-                    Text("Cose che a volte aiutano", color = c.primary, style = type(14, 20, medium = true))
+                    Text(stringResource(R.string.things_that_help), color = c.primary, style = type(14, 20, medium = true))
                     ui.tips.forEach { (icon, text) -> Tip(icon, text) }
                 }
             }
         }
 
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            FujiButton("Riprova", onRetry, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, height = 60.dp, icon = R.drawable.ic_retry)
+            FujiButton(stringResource(R.string.retry), onRetry, Modifier.fillMaxWidth(), kind = ButtonKind.Filled, height = 60.dp, icon = R.drawable.ic_retry)
             Row(Modifier.padding(top = 8.dp).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FujiButton(
-                    "Copia i dettagli tecnici", onCopy, Modifier.weight(1f), kind = ButtonKind.Outlined,
+                    stringResource(R.string.copy_details), onCopy, Modifier.weight(1f), kind = ButtonKind.Outlined,
                     icon = R.drawable.ic_copy, contentColor = c.onSurface,
                 )
-                FujiButton("Abbina nuova camera", onRepair, Modifier.weight(1f), kind = ButtonKind.Text)
+                FujiButton(stringResource(R.string.pair_new_camera), onRepair, Modifier.weight(1f), kind = ButtonKind.Text)
             }
         }
     }

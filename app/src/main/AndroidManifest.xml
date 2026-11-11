@@ -32,7 +32,7 @@
         android:usesCleartextTraffic="true"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Fuji Transfer"
+        android:label="@string/app_name"
         android:theme="@style/AppTheme">
 
         <activity

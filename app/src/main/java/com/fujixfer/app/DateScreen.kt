@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -78,26 +80,26 @@ private fun dateKey(c: Calendar): String = SimpleDateFormat("yyyyMMdd", Locale.R
 private fun dateKey(year: Int, month: Int, day: Int): String = String.format(Locale.ROOT, "%04d%02d%02d", year, month + 1, day)
 
 private fun short(k: String): String = try {
-    SimpleDateFormat("d MMM", Locale.ITALIAN).format(SimpleDateFormat("yyyyMMdd", Locale.ROOT).parse(k)!!).trimEnd('.')
+    SimpleDateFormat("d MMM", Locale.getDefault()).format(SimpleDateFormat("yyyyMMdd", Locale.ROOT).parse(k)!!).trimEnd('.')
 } catch (e: Exception) {
     k
 }
 
 /** The quick ranges: the last day out shooting first, then the usual ones; those with no photo in them are left out. */
-private fun presetRanges(counts: Map<String, Int>, today: String): List<Pair<String, Pair<String, String>>> {
+private fun presetRanges(ctx: android.content.Context, counts: Map<String, Int>, today: String): List<Pair<String, Pair<String, String>>> {
     val cal = Calendar.getInstance()
     fun daysAgo(n: Int) = dateKey((cal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, -n) })
     val monthStart = dateKey((cal.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) })
-    val monthName = SimpleDateFormat("LLLL", Locale.ITALIAN).format(cal.time).replaceFirstChar { it.uppercase() }
+    val monthName = SimpleDateFormat("LLLL", Locale.getDefault()).format(cal.time).replaceFirstChar { it.uppercase() }
     // the photos on the card are often older than "today"
     val lastShot = counts.filterValues { it > 0 }.keys.maxOrNull()
     val ranges = ArrayList<Pair<String, Pair<String, String>>>()
-    if (lastShot != null && lastShot != today) ranges.add("Ultimo giorno di scatto · " + short(lastShot) to (lastShot to lastShot))
+    if (lastShot != null && lastShot != today) ranges.add(ctx.getString(R.string.date_last_shot, short(lastShot)) to (lastShot to lastShot))
     ranges.addAll(
         listOf(
-            "Oggi" to (today to today), "Ieri" to (daysAgo(1) to daysAgo(1)),
-            "Ultimi 7 giorni" to (daysAgo(6) to today), monthName to (monthStart to today),
-            "Ultimi 30 giorni" to (daysAgo(29) to today),
+            ctx.getString(R.string.today) to (today to today), ctx.getString(R.string.yesterday) to (daysAgo(1) to daysAgo(1)),
+            ctx.getString(R.string.date_last_7) to (daysAgo(6) to today), monthName to (monthStart to today),
+            ctx.getString(R.string.date_last_30) to (daysAgo(29) to today),
         ),
     )
     fun has(r: Pair<String, String>) = counts.any { (k, n) -> n > 0 && k in r.first..r.second }
@@ -133,7 +135,8 @@ fun DateScreen(session: DateSession, onApply: (range: Pair<String, String>?, lab
     var start by remember(session.id) { mutableStateOf(ini?.first) }
     var end by remember(session.id) { mutableStateOf(if (ini != null && ini.second != ini.first) ini.second else null) }
     val today = remember(session.id) { dateKey(Calendar.getInstance()) }
-    val presets = remember(session.id) { presetRanges(counts, today) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val presets = remember(session.id) { presetRanges(ctx, counts, today) }
     val months = remember(session.id) { monthList(counts, today) }
 
     fun set(a: String?, b: String?) {
@@ -164,18 +167,18 @@ fun DateScreen(session: DateSession, onApply: (range: Pair<String, String>?, lab
         // top bar: close, Azzera
         Row(Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) {
-                Icon(painterResource(R.drawable.ic_close), contentDescription = "Chiudi", tint = c.onSurface)
+                Icon(painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.close), tint = c.onSurface)
             }
             Spacer(Modifier.weight(1f))
-            FujiButton("Azzera", { set(null, null) }, kind = ButtonKind.Text, height = 40.dp)
+            FujiButton(stringResource(R.string.reset), { set(null, null) }, kind = ButtonKind.Text, height = 40.dp)
         }
 
-        // "Foto scattate" + range in big type
+        // stringResource(R.string.date_taken) + range in big type
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) {
-            Text("Foto scattate", color = c.onSurfaceVariant, style = type(14, 20, medium = true))
+            Text(stringResource(R.string.date_taken), color = c.onSurfaceVariant, style = type(14, 20, medium = true))
             Text(
                 when {
-                    lo == null -> "Scegli i giorni"
+                    lo == null -> stringResource(R.string.date_pick_days)
                     hi == lo -> short(lo)
                     else -> short(lo) + " – " + short(hi!!)
                 },
@@ -234,19 +237,19 @@ fun DateScreen(session: DateSession, onApply: (range: Pair<String, String>?, lab
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(6.dp).clip(CircleShape).background(c.primary))
                     Text(
-                        "Giorni con foto sulla camera", Modifier.weight(1f).padding(start = 8.dp),
+                        stringResource(R.string.date_days_with_photos), Modifier.weight(1f).padding(start = 8.dp),
                         color = c.onSurfaceVariant, style = type(14, 20),
                     )
                     Text(
-                        if (lo == null) "" else (if (count == 1) "1 foto" else "$count foto") + (if (days > 1) " in $days giorni" else ""),
+                        if (lo == null) "" else pluralStringResource(R.plurals.n_photos, count, count) + (if (days > 1) stringResource(R.string.in_n_days, days) else ""),
                         color = c.onSurface, style = type(14, 20, medium = true),
                     )
                 }
                 FujiButton(
                     when {
-                        lo == null -> "Mostra tutte le foto"
-                        count == 0 -> "Nessuna foto in questi giorni"
-                        else -> "Mostra $count foto"
+                        lo == null -> stringResource(R.string.show_all_photos)
+                        count == 0 -> stringResource(R.string.date_none)
+                        else -> pluralStringResource(R.plurals.show_n_photos, count, count)
                     },
                     {
                         if (lo == null || hi == null) onApply(null, "")
@@ -267,7 +270,7 @@ private fun MonthBlock(
     val c = MaterialTheme.colorScheme
     val cal = remember(year, month) { Calendar.getInstance().apply { clear(); set(year, month, 1) } }
     val title = remember(year, month) {
-        SimpleDateFormat("LLLL yyyy", Locale.ITALIAN).format(cal.time).replaceFirstChar { it.uppercase() }
+        SimpleDateFormat("LLLL yyyy", Locale.getDefault()).format(cal.time).replaceFirstChar { it.uppercase() }
     }
     val first = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7 // Monday = 0
     val days = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
@@ -302,7 +305,8 @@ private fun DayCell(
     val inRange = lo != null && hi != null && key >= lo && key <= hi
     val edge = key == lo || key == hi
     val ranged = lo != null && hi != null && hi > lo
-    val desc = "$n" + (if (photos > 0) ", $photos foto" else ", nessuna foto") + (if (isToday) ", oggi" else "")
+    val desc = "$n, " + (if (photos > 0) pluralStringResource(R.plurals.n_photos, photos, photos) else stringResource(R.string.no_photos)) +
+        (if (isToday) ", " + stringResource(R.string.today_lower) else "")
     Box(
         modifier.height(46.dp).semantics { contentDescription = desc }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = !future, role = Role.Button, onClick = onClick),

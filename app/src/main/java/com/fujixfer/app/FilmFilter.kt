@@ -1,5 +1,7 @@
 package com.fujixfer.app
 
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +46,13 @@ data class FilmOption(val name: String, val count: Int)
  * symbol of its own: null, and the caller falls back to the generic film icon.
  */
 object Films {
+    /** The name to show: the camera's own names, with the Italian generic ones ("Monocromo", "Seppia") translated. */
+    fun label(ctx: android.content.Context, name: String): String = when {
+        name == "Seppia" -> ctx.getString(R.string.film_sepia)
+        name.startsWith("Monocromo") -> ctx.getString(R.string.film_mono) + name.removePrefix("Monocromo")
+        else -> name
+    }
+
     fun icon(name: String): Int? = when (name) {
         "Provia" -> R.drawable.film_provia
         "Velvia" -> R.drawable.film_velvia
@@ -86,12 +95,12 @@ fun FilmSheet(options: List<FilmOption>, initial: Set<String>, onDismiss: () -> 
         dragHandle = { SheetHandle() },
     ) {
         Column(Modifier.fillMaxWidth().padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = 24.dp)) {
-            Text("Pellicola", color = c.onSurface, style = type(22, 28))
+            Text(stringResource(R.string.filter_film), color = c.onSurface, style = type(22, 28))
             Text(
                 when {
-                    scanning -> "Sto ancora leggendo le foto: l'elenco può crescere"
-                    options.isEmpty() -> "Nessuna simulazione letta finora"
-                    else -> "Scegli una o più simulazioni"
+                    scanning -> stringResource(R.string.film_scanning)
+                    options.isEmpty() -> stringResource(R.string.film_none)
+                    else -> stringResource(R.string.film_pick)
                 },
                 Modifier.padding(top = 2.dp), color = c.onSurfaceVariant, style = type(14, 20),
             )
@@ -105,12 +114,12 @@ fun FilmSheet(options: List<FilmOption>, initial: Set<String>, onDismiss: () -> 
             }
             Row(Modifier.fillMaxWidth().padding(top = 24.dp)) {
                 GroupButton(
-                    "Azzera", first = true, container = c.secondaryContainer, content = c.onSecondaryContainer,
+                    stringResource(R.string.reset), first = true, container = c.secondaryContainer, content = c.onSecondaryContainer,
                     onClick = { sel = emptySet() }, modifier = Modifier.weight(1f), enabled = sel.isNotEmpty(),
                 )
                 Box(Modifier.size(2.dp))
                 GroupButton(
-                    if (sel.isEmpty()) "Mostra tutte" else "Mostra $total foto", first = false,
+                    if (sel.isEmpty()) stringResource(R.string.show_all) else pluralStringResource(R.plurals.show_n_photos, total, total), first = false,
                     container = c.primary, content = c.onPrimary, onClick = { onApply(sel) }, modifier = Modifier.weight(1f),
                 )
             }
@@ -138,7 +147,7 @@ private fun FilmRow(o: FilmOption, on: Boolean, onClick: () -> Unit) {
             )
         }
         Text(
-            o.name, Modifier.weight(1f).padding(start = 16.dp),
+            Films.label(androidx.compose.ui.platform.LocalContext.current, o.name), Modifier.weight(1f).padding(start = 16.dp),
             color = if (on) c.onSecondaryContainer else c.onSurface, style = type(16, 24), maxLines = 1,
         )
         Text("${o.count}", color = c.onSurfaceVariant, style = type(14, 20))
