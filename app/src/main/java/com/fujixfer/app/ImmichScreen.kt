@@ -375,7 +375,7 @@ private fun InfoRow(title: String, sub: String, shape: RoundedCornerShape, actio
 
 /** One choice of "Quando caricare": a radio row in a joined group (outer corners 20, inner 6; chosen = 20). */
 @Composable
-private fun ModeRow(title: String, sub: String, on: Boolean, first: Boolean, last: Boolean, onClick: () -> Unit) {
+internal fun ModeRow(title: String, sub: String, on: Boolean, first: Boolean, last: Boolean, onClick: () -> Unit) {
     val c = MaterialTheme.colorScheme
     val big = 20.dp
     val small = 6.dp

@@ -413,7 +413,7 @@
     <string name="notif_partial">%1$s picks up from %2$d%%.</string>
     <string name="notif_queued">%1$d queued for Immich.</string>
     <string name="notif_tap_resume">Tap to resume.</string>
-    <string name="notif_where">Photos and videos in Fujifilm, RAW in Download/Fujifilm.</string>
+    <string name="notif_where">Saved in %1$s.</string>
     <string name="of_m">" of %1$d"</string>
     <string name="open">Open</string>
     <plurals name="open_saved_gallery">
@@ -474,7 +474,6 @@
     <string name="set_background">Background use</string>
     <string name="set_battery">Battery</string>
     <string name="set_folder">Save folder</string>
-    <string name="set_folder_sub">Photos in Pictures/Fujifilm, videos in Movies/Fujifilm, RAW in Download/Fujifilm</string>
     <string name="set_im_ask">only when I ask</string>
     <string name="set_im_auto">after every download</string>
     <string name="set_im_linked">Connected to %1$s</string>
@@ -657,8 +656,8 @@
     <string name="waiting">Waiting</string>
     <string name="was_there">Already there</string>
     <string name="what_happened">What happened</string>
-    <string name="where_gallery">Gallery › Fujifilm</string>
-    <string name="where_raw">photos in Fujifilm, RAW in Download/Fujifilm</string>
+    <string name="where_gallery">Gallery › %1$s</string>
+    <string name="where_raw">photos in %1$s, RAW in Download/%1$s</string>
     <string name="wifi_joined">Wi-Fi joined</string>
     <string name="wifi_not_joined">Wi-Fi not joined</string>
     <string name="wifi_starting">Wi-Fi starting</string>
@@ -671,4 +670,16 @@
     <string name="yesterday_at">Yesterday, %1$s</string>
     <string name="zoom_in">Zoom in</string>
     <string name="zoom_out">Zoom out</string>
+    <string name="save">Save</string>
+    <string name="folder_pictures">Pictures</string>
+    <string name="folder_pictures_sub">Photos, RAW and videos together</string>
+    <string name="folder_dcim">DCIM</string>
+    <string name="folder_dcim_sub">Together, next to the phone camera\'s photos</string>
+    <string name="folder_download">Download</string>
+    <string name="folder_download_sub">Together; some gallery apps don\'t show it</string>
+    <string name="folder_split">By file type</string>
+    <string name="folder_split_sub">Photos in Pictures, videos in Movies, RAW in Download</string>
+    <string name="folder_split_desc">photos in Pictures/%1$s, videos in Movies/%1$s, RAW in Download/%1$s</string>
+    <string name="folder_name">Folder name</string>
+    <string name="folder_note">Files already downloaded stay where they are. If Android doesn\'t accept a file in the chosen folder, it goes to the folder for its type.</string>
 </resources>

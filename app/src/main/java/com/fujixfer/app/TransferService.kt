@@ -1179,7 +1179,7 @@ class TransferService : Service() {
                 failed > 0 -> doneTitle to resources.getQuantityString(R.plurals.notif_failed, failed, failed)
                 immichOffer(ok) -> doneTitle to getString(R.string.ask_send_too)
                 immichQueued > 0 -> doneTitle to getString(R.string.notif_queued, immichQueued)
-                else -> doneTitle to getString(R.string.notif_where)
+                else -> doneTitle to getString(R.string.notif_where, SaveFolder.describe(this))
             }
             updateNotification(text, 0, 0, force = true, title = title)
         }
@@ -1694,17 +1694,33 @@ class TransferService : Service() {
         ByteArray(0)
     }
 
-    /** Where a file goes in the phone's media store: collection, folder, MIME type. */
-    private fun mediaTarget(info: ObjectInfo): Triple<android.net.Uri, String, String> {
-        val ext = info.filename.substringAfterLast('.', "").lowercase(Locale.ROOT)
-        val volume = MediaStore.VOLUME_EXTERNAL_PRIMARY
-        return when (ext) {
-            "jpg", "jpeg" -> Triple(MediaStore.Images.Media.getContentUri(volume), "Pictures/Fujifilm", "image/jpeg")
-            "heic", "hif" -> Triple(MediaStore.Images.Media.getContentUri(volume), "Pictures/Fujifilm", "image/heif")
-            "mov" -> Triple(MediaStore.Video.Media.getContentUri(volume), "Movies/Fujifilm", "video/quicktime")
-            "mp4" -> Triple(MediaStore.Video.Media.getContentUri(volume), "Movies/Fujifilm", "video/mp4")
-            else -> Triple(MediaStore.Downloads.getContentUri(volume), "Download/Fujifilm", "application/octet-stream")
+    /**
+     * A new pending item for [info] in the folder chosen in the settings. A folder the media store refuses for
+     * this kind of file (a video in Pictures on Android 10, say) falls back to the folder for its type.
+     */
+    private fun insertItem(info: ObjectInfo): android.net.Uri {
+        val chosen = SaveFolder.target(this, info.filename)
+        val fallback = SaveFolder.split(info.filename, SaveFolder.get(this).name)
+        for (t in listOf(chosen, fallback).distinct()) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, info.filename)
+                put(MediaStore.MediaColumns.MIME_TYPE, t.mime)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, t.folder)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+                parseDate(info.captureDate)?.let { put(MediaStore.MediaColumns.DATE_MODIFIED, it / 1000) }
+            }
+            val uri = try {
+                contentResolver.insert(t.collection, values)
+            } catch (e: IllegalArgumentException) {
+                DebugLog.add("  ${info.filename}: ${t.folder} non accetta il file (${e.message}), uso la cartella del tipo")
+                null
+            }
+            if (uri != null) {
+                SaveFolder.used(this, t.folder)
+                return uri
+            }
         }
+        throw IOException(getString(R.string.ex_mediastore, info.filename))
     }
 
     /**
@@ -1719,15 +1735,7 @@ class TransferService : Service() {
         if (uri != null) {
             DebugLog.add("  ${info.filename}: riprendo nel file già iniziato")
         } else {
-            val (collection, folder, mime) = mediaTarget(info)
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, info.filename)
-                put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
-                put(MediaStore.MediaColumns.IS_PENDING, 1)
-                parseDate(info.captureDate)?.let { put(MediaStore.MediaColumns.DATE_MODIFIED, it / 1000) }
-            }
-            uri = resolver.insert(collection, values) ?: throw IOException(getString(R.string.ex_mediastore, info.filename))
+            uri = insertItem(info)
             rememberPending(key, uri)
         }
         try {

@@ -432,7 +432,7 @@
     <string name="notif_partial">%1$s riparte dal %2$d%%.</string>
     <string name="notif_queued">%1$d in coda per Immich.</string>
     <string name="notif_tap_resume">Tocca per riprendere.</string>
-    <string name="notif_where">Foto e video in Fujifilm, RAW in Download/Fujifilm.</string>
+    <string name="notif_where">Salvati in %1$s.</string>
     <string name="of_m">" di %1$d"</string>
     <string name="open">Apri</string>
     <plurals name="open_saved_gallery">
@@ -497,7 +497,6 @@
     <string name="set_background">Uso in background</string>
     <string name="set_battery">Batteria</string>
     <string name="set_folder">Cartella di salvataggio</string>
-    <string name="set_folder_sub">Foto in Pictures/Fujifilm, video in Movies/Fujifilm, RAW in Download/Fujifilm</string>
     <string name="set_im_ask">solo quando lo chiedo</string>
     <string name="set_im_auto">dopo ogni download</string>
     <string name="set_im_linked">Collegato a %1$s</string>
@@ -687,8 +686,8 @@
     <string name="waiting">In attesa</string>
     <string name="was_there">C\'era già</string>
     <string name="what_happened">Cosa è successo</string>
-    <string name="where_gallery">Galleria › Fujifilm</string>
-    <string name="where_raw">foto in Fujifilm, RAW in Download/Fujifilm</string>
+    <string name="where_gallery">Galleria › %1$s</string>
+    <string name="where_raw">foto in %1$s, RAW in Download/%1$s</string>
     <string name="wifi_joined">Wi-Fi collegato</string>
     <string name="wifi_not_joined">Wi-Fi non collegato</string>
     <string name="wifi_starting">Wi-Fi in avvio</string>
@@ -701,4 +700,16 @@
     <string name="yesterday_at">Ieri, %1$s</string>
     <string name="zoom_in">Ingrandisci</string>
     <string name="zoom_out">Riduci</string>
+    <string name="save">Salva</string>
+    <string name="folder_pictures">Pictures</string>
+    <string name="folder_pictures_sub">Foto, RAW e video insieme</string>
+    <string name="folder_dcim">DCIM</string>
+    <string name="folder_dcim_sub">Insieme, accanto alle foto della fotocamera del telefono</string>
+    <string name="folder_download">Download</string>
+    <string name="folder_download_sub">Insieme; alcune app galleria non la mostrano</string>
+    <string name="folder_split">Per tipo di file</string>
+    <string name="folder_split_sub">Foto in Pictures, video in Movies, RAW in Download</string>
+    <string name="folder_split_desc">foto in Pictures/%1$s, video in Movies/%1$s, RAW in Download/%1$s</string>
+    <string name="folder_name">Nome della cartella</string>
+    <string name="folder_note">I file già scaricati restano dove sono. Se Android non accetta un file nella cartella scelta, va nella cartella del suo tipo.</string>
 </resources>

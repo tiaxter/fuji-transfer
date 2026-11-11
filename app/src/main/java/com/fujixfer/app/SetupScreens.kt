@@ -18,13 +18,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -421,4 +430,54 @@ fun VideoErrorPanel(what: String, why: String, onRetry: () -> Unit, onDownload: 
             }
         }
     }
+}
+
+// ------------------------------------------------------------------ save folder
+
+/**
+ * "Cartella di salvataggio": where downloaded files go (Pictures, DCIM, Download or one folder per type) and
+ * the folder's name. Files already on the phone stay where they are.
+ */
+@Composable
+fun SaveFolderDialog(initial: SaveFolder.Choice, onSave: (SaveFolder.Choice) -> Unit, onDismiss: () -> Unit) {
+    val c = MaterialTheme.colorScheme
+    var base by remember { mutableStateOf(initial.base) }
+    var name by remember { mutableStateOf(initial.name) }
+    val cleaned = SaveFolder.clean(name)
+    val choices = listOf(
+        Triple(SaveFolder.BASE_PICTURES, stringResource(R.string.folder_pictures), stringResource(R.string.folder_pictures_sub)),
+        Triple(SaveFolder.BASE_DCIM, stringResource(R.string.folder_dcim), stringResource(R.string.folder_dcim_sub)),
+        Triple(SaveFolder.BASE_DOWNLOAD, stringResource(R.string.folder_download), stringResource(R.string.folder_download_sub)),
+        Triple(SaveFolder.BASE_SPLIT, stringResource(R.string.folder_split), stringResource(R.string.folder_split_sub)),
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.set_folder)) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    choices.forEachIndexed { i, (key, title, sub) ->
+                        ModeRow(title, sub, base == key, i == 0, i == choices.size - 1) { base = key }
+                    }
+                }
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    label = { Text(stringResource(R.string.folder_name)) },
+                    supportingText = {
+                        Text(SaveFolder.describe(LocalContext.current, SaveFolder.Choice(base, cleaned)))
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(unfocusedBorderColor = c.outline),
+                )
+                Text(
+                    stringResource(R.string.folder_note), Modifier.padding(top = 8.dp),
+                    color = c.onSurfaceVariant, style = type(13, 18),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onSave(SaveFolder.Choice(base, cleaned)) }) { Text(stringResource(R.string.save)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
 }

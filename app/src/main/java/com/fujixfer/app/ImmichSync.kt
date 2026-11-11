@@ -58,7 +58,6 @@ object ImmichSync {
     private const val HISTORY_MAX = 200
     private const val JOB_ID = 4711
     private const val DEVICE_ID = "fuji-transfer"
-    private val FOLDERS = listOf("Pictures/Fujifilm", "Movies/Fujifilm", "Download/Fujifilm")
 
     /** "Solo quando lo chiedo": the gallery's "Immich" only. */
     const val MODE_ASK = "ask"
@@ -509,8 +508,9 @@ object ImmichSync {
                 MediaStore.MediaColumns._ID, MediaStore.MediaColumns.DISPLAY_NAME,
                 MediaStore.MediaColumns.SIZE, MediaStore.MediaColumns.DATE_MODIFIED,
             )
-            val where = FOLDERS.joinToString(" OR ") { "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?" }
-            val args = FOLDERS.map { "$it%" }.toTypedArray()
+            val folders = SaveFolder.allFolders(c)
+            val where = folders.joinToString(" OR ") { "${MediaStore.MediaColumns.RELATIVE_PATH} LIKE ?" }
+            val args = folders.map { "$it/%" }.toTypedArray()
             c.contentResolver.query(collection, cols, "($where) AND ${MediaStore.MediaColumns.IS_PENDING} = 0", args, null)?.use { q ->
                 while (q.moveToNext()) {
                     val size = q.getLong(2)
