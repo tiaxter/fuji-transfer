@@ -17,6 +17,11 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -124,7 +129,10 @@ class ViewerActions(
     val onBack: () -> Unit,
     val onHd: () -> Unit,
     val onSelect: () -> Unit,
-    val onInfo: () -> Unit,
+    /** The details sheet's select button: toggles the file and returns whether it is now selected. */
+    val onDetailsSelect: () -> Boolean = { false },
+    /** The details sheet's upload button: queues the file for Immich (or takes it out) and returns the new mark. */
+    val onDetailsUpload: () -> ImmichMark = { ImmichMark.None },
     /** "Scarica ora" in the panel: the file on screen to the phone. */
     val onDownload: () -> Unit = {},
     val onPlay: () -> Unit,
@@ -192,6 +200,11 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
     var boxPos by remember { mutableStateOf(Offset.Zero) }
     // false until the box has been laid out once: before that boxPos is a guess and the picture would be drawn off its cell
     var placed by remember { mutableStateOf(false) }
+    // the details sheet: how much of it is out (px, 0 = hidden, sheetH = open); it follows the finger and the
+    // picture moves up with it, then it settles open or closed
+    var reveal by remember { mutableFloatStateOf(0f) }
+    var sheetH by remember { mutableIntStateOf(0) }
+    var sheetJob by remember { mutableStateOf<Job?>(null) }
     val gap = with(density) { 16.dp.toPx() }
     val minFling = with(density) { 350.dp.toPx() }
     val pageW = boxW + gap
@@ -224,6 +237,43 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
         g.job = scope.launch { animate(from, 0f, animationSpec = tween(200, easing = Easing { 1f - (1f - it).pow(3.2f) })) { v, _ -> offsetY = v } }
     }
 
+    /** The highest the sheet goes: all of it, but never more than most of the screen. */
+    fun sheetMax(): Float = min(sheetH.toFloat(), boxH * 0.85f).coerceAtLeast(0f)
+
+    /** How far up the picture is moved for a sheet [r] px out: at least half (it stays centred above the sheet), more if it would go under it. */
+    fun pictureShift(r: Float): Float {
+        if (r <= 0f) return 0f
+        val b = sNow.cur
+        val fittedH = if (b != null && sNow.imageVisible) b.height * min(boxW.toFloat() / b.width, boxH.toFloat() / b.height) else boxH.toFloat()
+        val needed = r - (boxH - fittedH) / 2f
+        return needed.coerceIn(r * 0.5f, r)
+    }
+
+    fun settleSheet(open: Boolean) {
+        sheetJob?.cancel()
+        val from = reveal
+        val target = if (open) sheetMax() else 0f
+        DebugLog.detail("visore: dettagli " + if (open) "aperti" else "chiusi")
+        sheetJob = scope.launch {
+            animate(from, target, animationSpec = tween(260, easing = Easing { 1f - (1f - it).pow(3.2f) })) { v, _ -> reveal = v }
+        }
+    }
+
+    /** End of a drag of the sheet (on the picture or on the sheet): a fling decides, otherwise the nearest end. */
+    fun releaseSheet(vy: Float) {
+        val open = when {
+            vy < -minFling -> true
+            vy > minFling -> false
+            else -> reveal > sheetMax() / 2f
+        }
+        settleSheet(open)
+    }
+
+    fun dragSheet(dy: Float) {
+        sheetJob?.cancel()
+        reveal = (reveal - dy).coerceIn(0f, sheetMax())
+    }
+
     fun startClose() {
         if (closing) return
         closing = true
@@ -234,7 +284,10 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
         zoomNow.panX = 0f
         zoomNow.panY = 0f
         val p = if (boxH > 0) (abs(offsetY) / (boxH * 0.5f)).coerceIn(0f, 1f) else 0f
-        closeFrom = Triple(offsetX, offsetY, 1f - 0.4f * p)
+        // the picture leaves from where it is, also when the details sheet had moved it up
+        closeFrom = Triple(offsetX, offsetY - pictureShift(reveal), 1f - 0.4f * p)
+        sheetJob?.cancel()
+        reveal = 0f
         bgStart = 1f - p
         offsetX = 0f
         offsetY = 0f
@@ -291,6 +344,9 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
         t.value < 1f -> t.value
         else -> 1f - progress
     }
+    val sheetFrac = if (sheetMax() > 0f) (reveal / sheetMax()).coerceIn(0f, 1f) else 0f
+    val shift = pictureShift(reveal)
+    BackHandler(enabled = reveal > 0f && !closing) { settleSheet(false) }
     val bottomAlpha by animateFloatAsState(
         if (s.chrome && !(s.videoVisible && s.controllerShown)) 1f else 0f, tween(150), label = "bottom",
     )
@@ -326,10 +382,12 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                     val takingOver = g.job?.isActive == true
                     g.job?.cancel()
                     if (offsetY != 0f) offsetY = 0f // a page still springing back from a closing drag lands at rest
+                    val sheetOut = reveal > 0f
+                    if (sheetOut) sheetJob?.cancel() // the finger takes the sheet where it is
                     val slop = viewConfiguration.touchSlop
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
-                    // 0 undecided, 1 the picture (pinch, pan), 2 paging, 3 closing (drag down), 4 details (drag up)
+                    // 0 undecided, 1 the picture (pinch, pan), 2 paging, 3 closing (drag down), 4 the details sheet (up, or either way when it is out)
                     var mode = if (takingOver && offsetX != 0f) 2 else 0
                     var moved = false
                     val imageMode = sNow.imageVisible && sNow.cur != null
@@ -362,9 +420,9 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                             moved = true
                             // the first move decides: zoomed in, the picture moves; otherwise sideways pages, up or down closes
                             mode = when {
-                                imageMode && zoomNow.zoom > 1.02f -> 1
+                                imageMode && zoomNow.zoom > 1.02f && !sheetOut -> 1
                                 abs(dx) > abs(dy) * 1.3f -> 2
-                                dy < 0 -> 4
+                                dy < 0 || sheetOut -> 4
                                 else -> 3
                             }
                             DebugLog.detail("visore: gesto ${when (mode) { 1 -> "sposta la foto"; 2 -> "scorre le pagine"; 3 -> "chiude (giù)"; else -> "dettagli (su)" }} " +
@@ -391,8 +449,8 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                                 ch.consume()
                             }
                             4 -> {
-                                // the picture only follows a little, with resistance, and never goes down
-                                offsetY = (offsetY + delta.y * 0.5f).coerceAtMost(0f)
+                                // the sheet follows the finger and pushes the picture up with it
+                                dragSheet(delta.y)
                                 ch.consume()
                             }
                         }
@@ -407,6 +465,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                                         else -> 0
                                     }
                                     settle(dir)
+                                    if (sheetOut) settleSheet(reveal > sheetMax() / 2f) // a sheet left half out goes to the nearest end
                                 }
                                 3 -> {
                                     val far = abs(offsetY) > boxH / 8f
@@ -416,15 +475,10 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                                         if (far || flung) "chiude" else "torna a posto")
                                     if (far || flung) startClose() else springBack()
                                 }
-                                4 -> {
-                                    val far = -offsetY > 48.dp.toPx() / 2f || (ch.position.y - down.position.y) < -64.dp.toPx()
-                                    val flung = v.y < -minFling
-                                    DebugLog.detail("visore: rilascio su offsetY=${offsetY.roundToInt()} vy=${v.y.roundToInt()} → " +
-                                        if (far || flung) "apre i dettagli" else "torna a posto")
-                                    springBack()
-                                    if (far || flung) a.onInfo()
-                                }
-                                0 -> if (!moved && imageMode) {
+                                4 -> releaseSheet(v.y)
+                                0 -> if (!moved && sheetOut) {
+                                    settleSheet(false) // a tap on the picture puts the sheet away
+                                } else if (!moved && imageMode) {
                                     // a tap: one confirms after the double tap time, two zoom
                                     val timeout = viewConfiguration.doubleTapTimeoutMillis
                                     val now = ch.uptimeMillis
@@ -447,7 +501,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                         }
                     }
                 }
-            },
+            }.graphicsLayer { translationY = -shift }, // after the input: the gestures keep the screen's coordinates
         ) {
             // previous
             Box(Modifier.fillMaxSize().graphicsLayer { translationX = offsetX - pageW }) {
@@ -517,7 +571,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
         // top bar
         if (chromeAlpha > 0f) {
             Box(Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = barsAlpha }) {
-                ViewerBar(s.top, a.onBack, a.onHd, a.onInfo)
+                ViewerBar(s.top, a.onBack, a.onHd) { settleSheet(true) }
             }
         }
       }
@@ -529,7 +583,7 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
           Column(
               Modifier.align(Alignment.BottomCenter).fillMaxWidth()
                   .then(if (panel != null && portrait) Modifier else Modifier.navigationBarsPadding().padding(bottom = 12.dp))
-                  .graphicsLayer { alpha = bottomAlpha * (1f - (progress * 3f).coerceAtMost(1f)) * ((t.value - 0.5f) * 2f).coerceIn(0f, 1f) },
+                  .graphicsLayer { alpha = bottomAlpha * (1f - sheetFrac) * (1f - (progress * 3f).coerceAtMost(1f)) * ((t.value - 0.5f) * 2f).coerceIn(0f, 1f) },
           ) {
               if (s.loadingVisible) {
                   if (s.load.videoWhat.isNotEmpty()) {
@@ -545,8 +599,34 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
               }
               ViewerStrip(s.items, s.index, s.stripTick, a.onJump)
               if (panel != null && portrait) {
-                  Box(Modifier.padding(top = 12.dp)) { ViewerPanel(panel, a.onInfo, a.onSelect, a.onDownload) }
+                  Box(Modifier.padding(top = 12.dp)) { ViewerPanel(panel, { settleSheet(true) }, a.onSelect, a.onDownload) }
               }
+          }
+      }
+      // the details sheet: it comes up from the bottom edge under the finger, the picture moving up above it; a drag
+      // on it moves it too, a tap on the picture, a drag down or back puts it away
+      s.panel?.let { ui ->
+          val c = MaterialTheme.colorScheme
+          Column(
+              Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                  .onSizeChanged { sheetH = it.height }
+                  .graphicsLayer {
+                      translationY = sheetH - reveal
+                      alpha = if (reveal > 0f && !closing) 1f else 0f
+                  }
+                  .draggable(
+                      rememberDraggableState { d -> dragSheet(d) }, Orientation.Vertical,
+                      enabled = reveal > 0f && !closing,
+                      onDragStopped = { v -> releaseSheet(v) },
+                  )
+                  .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).background(c.surfaceContainerLow)
+                  .navigationBarsPadding(),
+          ) {
+              Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { SheetHandle() }
+              DetailsContent(ui, a.onDetailsSelect, {
+                  settleSheet(false)
+                  a.onDownload()
+              }, a.onDetailsUpload)
           }
       }
     }

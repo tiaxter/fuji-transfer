@@ -12,9 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,26 +52,6 @@ data class DetailsUi(
 
 /** Where a camera file stands with Immich. */
 enum class ImmichMark(val label: Int) { None(R.string.immich_not_yet), Queued(R.string.queued), Done(R.string.yes) }
-
-/**
- * The details as a real sheet over the full-size viewer (a window of its own: the viewer stays visible and live
- * behind it, a tap outside or a drag down closes it).
- *
- * @param onSelect toggles the selection of the file and returns whether it is now selected.
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DetailsSheet(ui: DetailsUi, onDismiss: () -> Unit, onSelect: () -> Boolean, onDownload: () -> Unit, onUpload: () -> ImmichMark) {
-    val c = MaterialTheme.colorScheme
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        containerColor = c.surfaceContainerLow,
-        scrimColor = Color.Black.copy(alpha = 0.45f),
-        dragHandle = { SheetHandle() },
-    ) {
-        DetailsContent(ui, onSelect, onDownload, onUpload)
-    }
-}
 
 @Composable
 fun SheetHandle() {

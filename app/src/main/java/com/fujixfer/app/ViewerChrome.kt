@@ -101,7 +101,7 @@ fun ViewerBar(ui: ViewerTopUi, onBack: () -> Unit, onHd: () -> Unit, onInfo: () 
 /**
  * The fixed panel under the viewer's strip (design "Rev · Visore"): a sheet-like surface with the handle, the name and
  * "Dettagli ›" (the full sheet), the format and film chips, size · dimensions · place, whether it is on the phone,
- * and the joined Seleziona | Scarica ora pair. A drag up on the picture still opens the full sheet.
+ * and the joined Seleziona | Scarica ora pair. A drag up on the picture pulls out the full sheet (ViewerScreen).
  */
 @Composable
 fun ViewerPanel(ui: DetailsUi, onDetails: () -> Unit, onSelect: () -> Unit, onDownload: () -> Unit) {

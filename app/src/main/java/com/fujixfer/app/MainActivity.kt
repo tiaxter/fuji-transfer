@@ -156,7 +156,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
     private var dateSession by mutableStateOf<DateSession?>(null)
     private var dateSessionId = 0
     /** The file whose details sheet is open over the viewer (null = closed). */
-    private var detailsInfo by mutableStateOf<ObjectInfo?>(null)
     /** The offline preview, null until the first one. */
     private var previewUi by mutableStateOf<PreviewUi?>(null)
     private var dateLabel = ""
@@ -901,22 +900,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     onCancel = { lowStorage = null },
                 )
             }
-            detailsInfo?.let { info ->
-                DetailsSheet(
-                    ui = detailsUi(info),
-                    onDismiss = { detailsInfo = null },
-                    onSelect = {
-                        toggle(info)
-                        info.handle in selected
-                    },
-                    onDownload = {
-                        detailsInfo = null
-                        downloadsHidden = false
-                        startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, longArrayOf(info.handle)) }
-                    },
-                    onUpload = { toggleUpload(info) },
-                )
-            }
         }
         // the full-size viewer: over the whole window, system bars included
         viewerHost?.let { (state, actions) -> ViewerScreen(state, actions) }
@@ -1607,14 +1590,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         previewOpen = true
     }
 
-    /**
-     * The details as a real sheet over the full-size viewer: the viewer stays visible and live behind it, a tap
-     * outside or a drag down closes it.
-     */
-    private fun showDetailsSheet(info: ObjectInfo) {
-        detailsInfo = info
-    }
-
     /** What the details sheet shows for a file. */
     private fun detailsUi(info: ObjectInfo): DetailsUi {
         val film = TransferState.meta[MetaStore.key(info.filename, info.captureDate)]?.film
@@ -1732,7 +1707,12 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
                     toggle(info)
                     paintSelect()
                 },
-                onInfo = { showDetailsSheet(info) },
+                onDetailsSelect = {
+                    toggle(info)
+                    paintSelect()
+                    info.handle in selected
+                },
+                onDetailsUpload = { toggleUpload(info).also { paintSelect() } },
                 onDownload = {
                     downloadsHidden = false
                     startServiceForeground(TransferService.ACTION_DOWNLOAD) { it.putExtra(TransferService.EXTRA_HANDLES, longArrayOf(info.handle)) }
@@ -2920,7 +2900,6 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
      */
     private fun queueForImmich(list: List<ObjectInfo>): Boolean {
         if (!ImmichSync.settings(this).configured) {
-            detailsInfo = null
             previewOpen = false
             immichOpen = true
             android.widget.Toast.makeText(this, getString(R.string.toast_link_immich), android.widget.Toast.LENGTH_SHORT).show()
