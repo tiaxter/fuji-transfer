@@ -1,6 +1,8 @@
 # Metadati e dimensioni dei file per la galleria: cosa provare sulla camera
 
-Stato: da provare su una camera reale (X-M5). Nulla di quanto segue è implementato.
+Stato: prove implementate in `core/.../MetaProbe.java`, eseguite una volta a ogni connessione Wi-Fi Fuji dopo
+l'elenco (`PROBE_METADATA` in `TransferService`); i risultati sono nel log, righe "prova metadati". Da togliere
+quando si è deciso cosa usare.
 Fonte: decompilazione di XApp 2.7.6 (vedi `XAPP_PROTOCOLLO.md`) e il codice attuale di `core/`.
 
 ## Situazione attuale

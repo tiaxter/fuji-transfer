@@ -32,6 +32,7 @@ import android.provider.MediaStore
 import com.fujixfer.core.FujiBle
 import com.fujixfer.core.FujiTcpLink
 import com.fujixfer.core.FujiWifi
+import com.fujixfer.core.MetaProbe
 import com.fujixfer.core.ObjectInfo
 import com.fujixfer.core.TransferEngine
 import java.io.File
@@ -55,6 +56,9 @@ class TransferService : Service() {
         const val ACTION_PAIR_BLE = "com.fujixfer.app.PAIR_BLE"
         const val ACTION_CONNECT_BLE = "com.fujixfer.app.CONNECT_BLE"
         const val PREF_PAIRING = "ble_pairing"
+
+        /** Temporary: the metadata and size probes of docs/METADATI_E_DIMENSIONI.md after each listing. */
+        private const val PROBE_METADATA = true
 
         /** How long "Disconnetti" waits for the command in flight before CloseSession (see closeSessionFirst). */
         private const val CLOSE_SESSION_WAIT_MS = 6000L
@@ -425,7 +429,11 @@ class TransferService : Service() {
             TransferState.sizesKnown = eng.listedWithRealSizes()
             TransferState.connected = true
             scheduleThumbs() // requests made during the listing that it did not get to
-            io.execute { scanMeta(eng) } // positions and films, in the background, after the thumbnails
+            io.execute {
+                // docs/METADATI_E_DIMENSIONI.md: log only, once per connection, before the position scan
+                if (PROBE_METADATA && !cancelRequested && engine === eng) MetaProbe.run(eng, list) { DebugLog.add("  $it") }
+                scanMeta(eng) // positions and films, in the background, after the thumbnails
+            }
             setStatus(getString(R.string.st_connected_n, list.size), steady = true)
             updateNotification(getString(R.string.notif_connected_n, list.size), 0, 0, force = true)
         } catch (e: Exception) {

@@ -53,6 +53,7 @@ public final class SelfTest {
         bleWifiLaunch();
         bleXAppPreLaunchSequence();
         bleAdoptXAppPairing();
+        metaProbe();
         immichSync();
         if (failures > 0) {
             System.out.println("\n" + failures + " CHECK(S) FAILED");
@@ -474,6 +475,40 @@ public final class SelfTest {
         never.bonded = true;
         never.zeroReadsBeforeConfirm = 1000;
         check("no confirmation within 40 tries -> clear error", throwsIo(() -> FujiBle.pair(never, adv, "x", QUIET)));
+    }
+
+    static void metaProbe() throws Exception {
+        System.out.println("== metadata probe: 0x9805 / 0x9054 answers logged, real sizes compared, nothing breaks");
+        byte[] list = new byte[4 + 2 * 12];
+        Ptp.putU32(list, 0, 2);
+        Ptp.putU32(list, 4, 1);
+        Ptp.putU16(list, 8, Ptp.OPC_OBJECT_SIZE);
+        Ptp.putU16(list, 10, 0x0006);
+        Ptp.putU32(list, 12, 123456);
+        Ptp.putU32(list, 16, 2);
+        Ptp.putU16(list, 20, Ptp.OPC_OBJECT_SIZE);
+        Ptp.putU16(list, 22, 0x0006);
+        Ptp.putU32(list, 24, 789);
+        List<String> items = new java.util.ArrayList<>();
+        check("ObjectPropList parsed (2 sizes)", MetaProbe.parsePropList(list, items, 8) == 2
+                && items.get(0).equals("1:DC04=123456") && items.get(1).equals("2:DC04=789"));
+        check("truncated ObjectPropList -> -1", MetaProbe.parsePropList(Arrays.copyOf(list, 20), new java.util.ArrayList<>(), 8) == -1);
+        byte[] str = {0, 4, 'A', 0, 'B', 0, 'C', 0, 0, 0, 9};
+        check("PTP strings found in raw bytes", MetaProbe.strings(str).equals(List.of("@1 \"ABC\"")));
+        try (FakeFujiCamera cam = new FakeFujiCamera()) {
+            byte[] jpg = FakeFujiCamera.pattern(200_000, 3);
+            cam.objects.add(new FakeFujiCamera.Obj("DSCF0001.JPG", 0x3801, jpg, jpg.length));
+            cam.objects.add(new FakeFujiCamera.Obj("DSCF0002.JPG", 0x3801, jpg, jpg.length));
+            TransferEngine eng = engine(cam);
+            List<ObjectInfo> objs = eng.listObjects(null);
+            List<String> log = new java.util.ArrayList<>();
+            MetaProbe.run(eng, objs, log::add);
+            String all = String.join("\n", log);
+            check("probe runs to the end on a camera without 0x9805", all.contains("0x9805 dimensioni di tutti -> ")
+                    && all.contains("prova metadati: finita"));
+            check("probe logs the real size to compare", all.contains("dimensione vera DSCF0001.JPG = " + jpg.length + " B"));
+            check("session still usable after the probe", eng.download(objs.get(1), tmp(), null).length() == jpg.length);
+        }
     }
 
     static void bleXAppPreLaunchSequence() throws Exception {
