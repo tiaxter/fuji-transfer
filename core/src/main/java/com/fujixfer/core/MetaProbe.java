@@ -8,19 +8,20 @@ import java.util.function.Consumer;
 
 /**
  * One-off probes of docs/METADATI_E_DIMENSIONI.md, run once after the listing on Fuji Wi-Fi: can the gallery get
- * sizes (and orientation, dates) without reading each file? Log only, nothing else uses the answers. Order:
- * MTP GetObjectPropList 0x9805 for all objects, 0x9054 on a few files with the raw bytes, 0x9054 on 20 files in a
- * row for the time, then the real sizes of the same few files to compare. Stops at the first lost connection.
+ * sizes (and orientation, dates) without reading each file? Log only, nothing else uses the answers. Lightest
+ * first: 0x9054 on a few files with the raw bytes, 0x9054 on 20 files in a row for the time, the real sizes of
+ * the same few files to compare, MTP GetObjectPropList 0x9805 on one file; last 0x9805 for all objects, which
+ * the X-M5 did not answer within the 10 s read timeout on 13 Nov (now given 60 s). Stops at the first lost
+ * connection.
  */
 public final class MetaProbe {
     static final int OC_GET_OBJECT_PROP_LIST = 0x9805;
     static final long ALL_OBJECTS = 0xFFFFFFFFL;
     static final long ALL_PROPS = 0xFFFFFFFFL;
-    static final int OPC_OBJECT_FILE_NAME = 0xDC07;
-    static final int OPC_DATE_CREATED = 0xDC08;
     /** Files whose 0x9054 bytes are logged and whose real size is read to compare. */
     static final int SAMPLE = 3;
     static final int TIMED = 20;
+    static final long ALL_OBJECTS_WAIT_MS = 60_000;
 
     private MetaProbe() {
     }
@@ -29,15 +30,10 @@ public final class MetaProbe {
         if (objects.isEmpty()) return;
         try {
             PtpSession s = eng.session();
-            if (s.fujiWifi() == null) return;
+            FujiWifi fuji = s.fujiWifi();
+            if (fuji == null) return;
             log.accept("prova metadati: " + objects.size() + " file, modo galleria");
-            propList(s, ALL_OBJECTS, Ptp.OPC_OBJECT_SIZE, "dimensioni di tutti", log);
             List<ObjectInfo> sample = new ArrayList<>(objects.subList(0, Math.min(SAMPLE, objects.size())));
-            boolean listOk = propList(s, sample.get(0).handle, ALL_PROPS, "tutte le proprietà di " + sample.get(0).filename, log);
-            if (listOk) {
-                propList(s, ALL_OBJECTS, OPC_DATE_CREATED, "date di tutti", log);
-                propList(s, ALL_OBJECTS, OPC_OBJECT_FILE_NAME, "nomi di tutti", log);
-            }
             for (ObjectInfo o : sample) {
                 Timed t = call(s, Ptp.OC_FUJI_GET_EXT_OBJECT_INFO, o.handle);
                 log.accept("prova metadati: 0x9054 " + o.filename + " (handle " + o.handle + ", elenco " + o.size + " B) -> "
@@ -61,6 +57,21 @@ public final class MetaProbe {
                 ObjectInfo real = eng.withRealSize(o);
                 log.accept("prova metadati: dimensione vera " + o.filename + " = " + real.size + " B ("
                         + (System.nanoTime() - t1) / 1_000_000 + " ms)");
+            }
+            s = eng.session(); // withRealSize may have reconnected
+            fuji = s.fujiWifi();
+            ObjectInfo first = sample.get(0);
+            boolean one = propList(s, first.handle, Ptp.OPC_OBJECT_SIZE, "dimensione di " + first.filename, log);
+            propList(s, first.handle, ALL_PROPS, "tutte le proprietà di " + first.filename, log);
+            if (one && fuji != null) {
+                fuji.expectSlowReply(ALL_OBJECTS_WAIT_MS);
+                try {
+                    propList(s, ALL_OBJECTS, Ptp.OPC_OBJECT_SIZE, "dimensioni di tutti (attesa fino a 60 s)", log);
+                } finally {
+                    fuji.endSlowReply();
+                }
+            } else {
+                log.accept("prova metadati: 0x9805 per tutti saltato (rifiutato già su un file)");
             }
             log.accept("prova metadati: finita");
         } catch (IOException e) {
