@@ -488,6 +488,18 @@ public final class SelfTest {
         int launch = order.indexOf(FujiBle.CH_FUNCTION_LAUNCH_REQUEST);
         check("UTC first, then image transfer setting ex <- 01, then the Wi-Fi request", utc >= 0 && ex > utc
                 && launch > ex && Arrays.equals(cam.writes.get(ex).value, new byte[]{1}));
+        check("time written once when the camera does not ask for it",
+                order.lastIndexOf(FujiBle.CH_UTC_AND_TIMEZONE) == utc);
+        FakeBleCamera asking = new FakeBleCamera(true);
+        asking.addXAppExtras();
+        asking.asksDateOnSubscribe = true;
+        FujiBle.launchWifi(asking, true, 5000, QUIET);
+        List<String> askOrder = new java.util.ArrayList<>();
+        for (FakeBleCamera.Write w : asking.writes) askOrder.add(w.ch);
+        int again = askOrder.lastIndexOf(FujiBle.CH_UTC_AND_TIMEZONE);
+        check("camera asks for the date: time sent again before the Wi-Fi request, like XApp",
+                again > askOrder.indexOf(FujiBle.CH_UTC_AND_TIMEZONE)
+                        && again < askOrder.indexOf(FujiBle.CH_FUNCTION_LAUNCH_REQUEST));
         check("subscribed to transfer state and camera vital state like XApp",
                 cam.subscribed.contains(FujiBle.CH_TRANSFER_STATE) && cam.subscribed.contains(FujiBle.CH_CAMERA_VITAL_STATE)
                         && cam.subscribed.indexOf(FujiBle.CH_AP_STATE) == 0);

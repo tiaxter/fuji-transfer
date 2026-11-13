@@ -1435,6 +1435,10 @@ class TransferService : Service() {
                 val infos = try {
                     eng.readExif(chunk.map { it.first() }, original)
                 } catch (e: IOException) {
+                    if (cancelRequested || e is TransferEngine.CancelledException) {
+                        DebugLog.add("  posizioni: fermate per la disconnessione, riprendo alla prossima connessione")
+                        break
+                    }
                     DebugLog.add(
                         "  posizioni: interrotto dopo ${System.currentTimeMillis() - c0} ms su ${chunk.size} scatti " +
                             "(${e.message}), riprendo alla prossima connessione",
@@ -1808,10 +1812,12 @@ class TransferService : Service() {
      * CloseSession waits for the command in flight (a 2 MiB block, a preview). If that takes more than 1.5 s, the
      * socket is closed under it while the camera's network is still up: before, the network went first and the
      * socket's close never reached the camera, which then kept its connection screen for 1–2 minutes (its own
-     * timeout), while XApp's never stays.
+     * timeout), while XApp's never stays. 13 Nov, 20:51: the position scan (~4 s a shot on the X-M5) still held the
+     * session after 1.5 s, so the scan is now stopped first, before its next command.
      */
     private fun closeSessionFirst() {
         val eng = engine ?: return
+        eng.stopReads() // the position scan would otherwise hold the session for its whole group of shots
         val t = Thread({ eng.close() }, "fuji-close")
         t.start()
         t.join(1500)

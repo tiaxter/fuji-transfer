@@ -587,6 +587,20 @@ public final class FujiBle {
         subscribe(g, SVC_CAMERA_SETTING, CH_LOCATION_SYNC_SETTING, "impostazione posizione", log);
         subscribe(g, SVC_CAMERA_SETTING, CH_IMAGE_RESIZE_SETTING, "ridimensionamento immagini", log);
         subscribe(g, SVC_CAMERA_SETTING, CH_LOCATION_SYNC_CYCLE, "intervallo posizione", log);
+        // On the subscription the X-M5 notifies DATE_SYNC_STATE = 1 even with the time just written (13 Nov, 20:50,
+        // and the Wi-Fi request was still refused for ~1.1 s). XApp answers every such notification with the time
+        // (BTCameraModel.analyzeChangeCharacteristic -> setChUTCAndTimeZone): do the same once here. The position
+        // asked with LOCATION_SYNC_STATE is not sent: XApp sends only the phone's real one, which this app cannot
+        // read without the location permission, and a made-up one would end up in the photos' EXIF.
+        try {
+            byte[] dateAsked = g.has(SVC_CAMERA_STATE, CH_DATE_SYNC_STATE) ? g.awaitNotification(CH_DATE_SYNC_STATE, 0) : null;
+            if (dateAsked != null && dateAsked.length > 0 && dateAsked[0] != 0) {
+                writeQuietly(g, SVC_CURRENT_TIME, CH_UTC_AND_TIMEZONE, utcAndTimeZone(System.currentTimeMillis(),
+                        java.util.TimeZone.getDefault()), "ora UTC e fuso (chiesta dalla camera)", log);
+            }
+        } catch (IOException e) {
+            log.trace("richiesta data non letta: " + e.getMessage());
+        }
     }
 
     /** XApp's setChUTCAndTimeZone: UTC y(16) m d h min s, offset as hhmm-ish int32 (+1:30 = 150), DST flag. */

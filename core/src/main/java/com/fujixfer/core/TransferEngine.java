@@ -137,6 +137,16 @@ public final class TransferEngine {
         dropSession();
     }
 
+    private volatile boolean readsStopped;
+
+    /**
+     * Makes {@link #readExif} stop before its next command (CancelledException), so a CloseSession that follows
+     * gets the session within a second or two instead of after the whole group (X-M5: up to 4 s a shot).
+     */
+    public void stopReads() {
+        readsStopped = true;
+    }
+
     /** Closes the socket under a command still running, without the lock close() waits for. */
     public void abort() {
         PtpSession s = session;
@@ -522,8 +532,10 @@ public final class TransferEngine {
         if (fuji != null && original) fuji.beginRealSizes();
         try {
             for (ObjectInfo info : group) {
+                if (readsStopped) throw new CancelledException();
                 ObjectInfo cur = locate(info);
                 if (fuji != null) s.getObjectInfo(cur.handle); // as before a download: the body expects it
+                if (readsStopped) throw new CancelledException();
                 try {
                     out.add(exifAt(s, cur.handle));
                 } catch (PtpResponseException e) {
@@ -532,10 +544,10 @@ public final class TransferEngine {
             }
         } catch (IOException e) {
             // not an answer from the camera: the connection is gone, do not leave it for the next operation
-            if (!(e instanceof PtpResponseException)) dropSession();
+            if (!(e instanceof PtpResponseException) && !(e instanceof CancelledException)) dropSession();
             throw e;
         } finally {
-            if (fuji != null && original && session != null) {
+            if (fuji != null && original && session != null && !readsStopped) {
                 try {
                     fuji.resetSizeMode();
                 } catch (IOException e) {

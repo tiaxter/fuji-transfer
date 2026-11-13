@@ -48,6 +48,9 @@ class FakeBleCamera implements GattLink {
         add(FujiBle.SVC_CURRENT_TIME, FujiBle.CH_UTC_AND_TIMEZONE);
         values.put(FujiBle.CH_TRANSFER_STATE, new byte[]{0});
     }
+    /** Like the X-M5: on the subscription it notifies DATE_SYNC_STATE = 1 (asks for the time). */
+    boolean asksDateOnSubscribe;
+    private final ArrayDeque<byte[]> dateNotifications = new ArrayDeque<>();
     private final ArrayDeque<byte[]> apNotifications = new ArrayDeque<>();
     private boolean apNotifyEnabled;
 
@@ -196,10 +199,12 @@ class FakeBleCamera implements GattLink {
         if (notificationsFail) throw new GattException("cccd", 133);
         subscribed.add(c);
         if (c.equals(FujiBle.CH_AP_STATE)) apNotifyEnabled = true;
+        if (c.equals(FujiBle.CH_DATE_SYNC_STATE) && asksDateOnSubscribe) dateNotifications.add(new byte[]{1, 0});
     }
 
     @Override
     public byte[] awaitNotification(String c, long timeoutMs) {
+        if (c.equals(FujiBle.CH_DATE_SYNC_STATE)) return dateNotifications.poll();
         if (!c.equals(FujiBle.CH_AP_STATE)) return null;
         byte[] v = apNotifications.poll();
         if (v == null) {

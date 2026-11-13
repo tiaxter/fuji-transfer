@@ -119,27 +119,28 @@ class BleGattLink(private val context: Context, private val device: BluetoothDev
 
     private fun key(uuid: UUID) = uuid.toString().uppercase(Locale.ROOT)
 
-    /** Connects, raises the MTU like XApp (185) and discovers the services. */
+    /** Connects, raises the MTU like XApp (185) where Android does not do it on its own, and discovers the services. */
     fun connect(timeoutMs: Long = 15_000) {
         DebugLog.add("BLE connessione a ${device.name} ${device.address} (bond=${device.bondState}, tipo=${device.type})")
         val g = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
             ?: throw IOException("Impossibile aprire la connessione Bluetooth")
         gatt = g
         await(connected, timeoutMs, "Camera non raggiungibile via Bluetooth")
-        // XApp's order: MTU, then services, no connection priority. With CONNECTION_PRIORITY_HIGH requested here
-        // (4 Nov to 13 Nov) the MTU answer came ~4.5 s after the link on every X-M5 connection, and the GATT requests
-        // that followed still took 50-60 ms each, so the shorter interval gave nothing.
+        // XApp's order: MTU, then services, no connection priority. The MTU answer came ~4.5 s after the link on
+        // every X-M5 connection, with CONNECTION_PRIORITY_HIGH (4 to 13 Nov) and without it (13 Nov, 20:50). From
+        // Android 14 the system exchanges the MTU by itself right after the link (517 asked, 255 here) and ignores
+        // the value an app asks: on those phones the request is skipped and discovery starts at once.
         val t0 = System.currentTimeMillis()
-        if (g.requestMtu(FujiBle.MTU)) {
+        if (Build.VERSION.SDK_INT < 34 && g.requestMtu(FujiBle.MTU)) {
             try {
                 mtu.get(5, TimeUnit.SECONDS)
             } catch (e: Exception) {
                 // keep the default MTU
             }
         }
-        DebugLog.detail("BLE MTU in ${System.currentTimeMillis() - t0} ms")
         if (!g.discoverServices()) throw IOException("Ricerca dei servizi Bluetooth non avviata")
         val status = await(discovered, 15_000, "La camera non ha elencato i servizi Bluetooth")
+        DebugLog.add("BLE MTU e servizi in ${System.currentTimeMillis() - t0} ms dal collegamento")
         if (status != BluetoothGatt.GATT_SUCCESS) throw GattLink.GattException("Servizi Bluetooth", status)
         for (s in g.services) {
             DebugLog.add("BLE servizio ${key(s.uuid)}: " + s.characteristics.joinToString(" ") {
