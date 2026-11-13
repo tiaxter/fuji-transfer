@@ -14,8 +14,14 @@ Fonte: decompilazione di XApp 2.7.6 (vedi `XAPP_PROTOCOLLO.md`) e il codice attu
 | 0x9054 con gli handle dell'elenco (444, 445…) | InvalidObjectHandle; XApp usa 0x10000001 e la camera risponde OK |
 | Dimensioni nell'elenco in modo galleria | RAF già vere, JPG no (167 936 B contro 12 909 986 B) |
 
-Da verificare (terzo giro): 0x9805 dà la dimensione vera anche dei JPG? Tempo su 50 file di fila. 0x9054 con
-0x10000000 + handle.
+| 0x9805 dimensione su un JPG (modo galleria) | la stessa dimensione finta dell'elenco (167 936 B), non quella vera |
+| 0x9805 dimensione su 50 file di fila | 50 OK, 127 ms l'uno (il più lento 259 ms): come GetObjectInfo, il 14 ms era un caso |
+| 0x9054 con 0x10000000 + handle (0x100001bc…) | InvalidObjectHandle |
+
+Conclusione per le dimensioni: in modo galleria la camera dà la dimensione finta dei JPG con qualunque comando;
+quella vera esiste solo in modo file originali (0xD226 = 2), che è ciò che l'app già fa al download. 0x9805 non fa
+risparmiare nulla. I RAF invece hanno già la dimensione vera nell'elenco (2 file su 2 controllati).
+Resta aperto: lo schema degli handle di 0x9054 (orientamento senza leggere l'EXIF).
 
 ## Situazione attuale
 - **EXIF** (simulazione pellicola, posizione, orientamento): `TransferEngine.readExif` legge i primi byte di ogni
