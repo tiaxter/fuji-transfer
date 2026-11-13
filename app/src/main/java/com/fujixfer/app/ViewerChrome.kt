@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -111,19 +113,26 @@ data class ViewerLoadUi(
     val videoCanDownload: Boolean = false,
 )
 
-/** What is on its way over the picture (preview or original): a status line, a thin wavy bar, the bytes so far. */
+/**
+ * What is on its way over the picture (preview or original): a compact pill as wide as its text, with a thin wavy
+ * bar and the bytes so far only when there are some; the bar gives it a steady width so it does not jump as it fills.
+ */
 @Composable
 fun ViewerLoading(ui: ViewerLoadUi) {
     val c = MaterialTheme.colorScheme
+    val bar = ui.progressVisible
+    val shape = if (bar || ui.bytes.isNotEmpty()) RoundedCornerShape(20.dp) else RoundedCornerShape(50)
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(Color(0xB3000000))
-            .padding(start = 20.dp, top = 12.dp, end = 20.dp, bottom = 14.dp),
+        Modifier.widthIn(min = if (bar) 220.dp else 0.dp, max = 360.dp).clip(shape).background(Color(0xB3000000))
+            .padding(horizontal = 18.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(ui.status, color = Color.White, textAlign = TextAlign.Center, style = type(16, 24))
-        if (ui.progressVisible) {
-            WavyBar(ui.progress, 1000, c.primary, c.secondaryContainer, Modifier.padding(top = 10.dp).fillMaxWidth().height(12.dp))
+        Text(ui.status, color = Color.White, textAlign = TextAlign.Center, style = type(14, 20, medium = true))
+        if (bar) {
+            WavyBar(ui.progress, 1000, c.primary, c.secondaryContainer, Modifier.padding(top = 8.dp).width(184.dp).height(10.dp))
         }
-        Text(ui.bytes, Modifier.padding(top = 8.dp), color = Color(0xB3FFFFFF), style = type(13, 18))
+        if (ui.bytes.isNotEmpty()) {
+            Text(ui.bytes, Modifier.padding(top = 6.dp), color = Color(0xB3FFFFFF), style = type(12, 16))
+        }
     }
 }

@@ -566,9 +566,10 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
             }
         }
 
-        // top bar
-        if (chromeAlpha > 0f) {
-            Box(Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = barsAlpha }) {
+        // top bar: it fades away while the details sheet comes up (twice as fast) and comes back when it goes down
+        val topFade = (1f - sheetFrac * 2f).coerceIn(0f, 1f)
+        if (chromeAlpha > 0f && topFade > 0f) {
+            Box(Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = barsAlpha * topFade }) {
                 ViewerBar(s.top, a.onBack, a.onHd) { settleSheet(true) }
             }
         }
@@ -589,7 +590,9 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                           )
                       }
                   } else {
-                      Box(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp)) { ViewerLoading(s.load) }
+                      Box(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, bottom = 12.dp), contentAlignment = Alignment.Center) {
+                          ViewerLoading(s.load)
+                      }
                   }
               }
               ViewerStrip(s.items, s.index, s.stripTick, a.onJump)
