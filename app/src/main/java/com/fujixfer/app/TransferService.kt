@@ -56,6 +56,9 @@ class TransferService : Service() {
         const val ACTION_CONNECT_BLE = "com.fujixfer.app.CONNECT_BLE"
         const val PREF_PAIRING = "ble_pairing"
 
+        /** How long "Disconnetti" waits for the command in flight before CloseSession (see closeSessionFirst). */
+        private const val CLOSE_SESSION_WAIT_MS = 6000L
+
         /** The listing saved at the last connection to [key] ("ble-" + Bluetooth address, …). */
         fun listingFile(c: Context, key: String) =
             File(c.filesDir, "listing-" + key.replace(Regex("[^A-Za-z0-9]"), "_") + ".tsv")
@@ -1402,6 +1405,12 @@ class TransferService : Service() {
                     "originale ${ref?.film}/${ref?.hasPosition()}, galleria ${light?.film}/${light?.hasPosition()})"),
             )
         } catch (e: IOException) {
+            if (cancelRequested || e is TransferEngine.CancelledException) {
+                DebugLog.add("  posizioni: fermate per la disconnessione, riprendo alla prossima connessione")
+                TransferState.metaScanning = false
+                TransferState.publish()
+                return
+            }
             DebugLog.add("  posizioni: prova del modo veloce non riuscita (${e.message}), uso il modo originale")
         }
         // Small chunks with a real pause: on 3 Nov the X-M5 turned its Wi-Fi off 10 s into a chunk of 12.
@@ -1812,23 +1821,27 @@ class TransferService : Service() {
      * CloseSession waits for the command in flight (a 2 MiB block, a preview). If that takes more than 1.5 s, the
      * socket is closed under it while the camera's network is still up: before, the network went first and the
      * socket's close never reached the camera, which then kept its connection screen for 1–2 minutes (its own
-     * timeout), while XApp's never stays. 13 Nov, 20:51: the position scan (~4 s a shot on the X-M5) still held the
-     * session after 1.5 s, so the scan is now stopped first, before its next command.
+     * timeout), while XApp's never stays. 13 Nov, 20:51 and 21:02: the position scan still held the session after
+     * 1.5 s (a single read of one shot took seconds on the X-M5), the socket was closed under it, and even with the
+     * Bluetooth "stopped by the user" the camera kept its connection screen: only CloseSession ends it. So the scan
+     * stops before its next command and the command in flight gets up to 6 s; this runs off the main thread and
+     * the screen already shows "Non connesso".
      */
     private fun closeSessionFirst() {
         val eng = engine ?: return
         eng.stopReads() // the position scan would otherwise hold the session for its whole group of shots
+        val t0 = System.currentTimeMillis()
         val t = Thread({ eng.close() }, "fuji-close")
         t.start()
-        t.join(1500)
+        t.join(CLOSE_SESSION_WAIT_MS)
         if (!t.isAlive) {
-            DebugLog.detail("sessione chiusa con la camera prima di lasciare la sua rete")
+            DebugLog.add("sessione chiusa con la camera in ${System.currentTimeMillis() - t0} ms, prima di lasciare la sua rete")
             return
         }
         eng.abort()
         t.join(500)
         Thread.sleep(200) // lets the close go out before Android drops the camera's network
-        DebugLog.add("CloseSession non completato in 1,5 s: chiuso il socket con la rete ancora attiva")
+        DebugLog.add("CloseSession non completato in ${CLOSE_SESSION_WAIT_MS / 1000} s: chiuso il socket con la rete ancora attiva")
     }
 
     /** Over the Bluetooth link still open, as XApp does when the person stops; at most 2 s. */
