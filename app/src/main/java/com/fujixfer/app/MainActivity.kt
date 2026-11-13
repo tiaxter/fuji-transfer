@@ -1836,7 +1836,7 @@ class MainActivity : ComponentActivity(), TransferState.Listener {
         fun paintSelect() {
             val on = info.handle in selected
             topUi = topUi.copy(selected = on)
-            ui.panel = detailsUi(info) // the panel at the bottom: name, format, facts, Seleziona | Scarica ora
+            ui.panel = detailsUi(info) // the details sheet (drag up or ⓘ)
         }
 
         private fun showItem(start: android.graphics.Bitmap?) {

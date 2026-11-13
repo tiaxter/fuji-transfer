@@ -34,8 +34,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.ui.platform.LocalConfiguration
-import android.content.res.Configuration
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -114,7 +112,7 @@ class ViewerState {
     /** The video's controls are up: the strip makes room for its seek bar. */
     var controllerShown by mutableStateOf(false)
     var top by mutableStateOf(ViewerTopUi())
-    /** The fixed panel at the bottom (name, format, facts, Seleziona | Scarica ora); null = none yet. */
+    /** What the details sheet shows for the file on screen (drag up or ⓘ); null = none yet. */
     var panel by mutableStateOf<DetailsUi?>(null)
     var load by mutableStateOf(ViewerLoadUi())
     /** Changes when thumbnails arrive (the strip reads them from Thumbs when it draws). */
@@ -133,7 +131,7 @@ class ViewerActions(
     val onDetailsSelect: () -> Boolean = { false },
     /** The details sheet's upload button: queues the file for Immich (or takes it out) and returns the new mark. */
     val onDetailsUpload: () -> ImmichMark = { ImmichMark.None },
-    /** "Scarica ora" in the panel: the file on screen to the phone. */
+    /** "Scarica ora" in the details sheet: the file on screen to the phone. */
     val onDownload: () -> Unit = {},
     val onPlay: () -> Unit,
     /** A single tap on the picture: show or hide the bars. */
@@ -575,14 +573,11 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
             }
         }
       }
-      // bottom: what is on its way, the strip of thumbnails and the fixed panel (portrait only: in landscape the
-      // panel would cover the picture). Outside the system-bar padding so the panel reaches the bottom edge.
+      // bottom: what is on its way and the strip of thumbnails; the details come only with a drag up or the ⓘ button
       if (bottomAlpha > 0f) {
-          val panel = s.panel
-          val portrait = LocalConfiguration.current.orientation != Configuration.ORIENTATION_LANDSCAPE
           Column(
               Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                  .then(if (panel != null && portrait) Modifier else Modifier.navigationBarsPadding().padding(bottom = 12.dp))
+                  .navigationBarsPadding().padding(bottom = 12.dp)
                   .graphicsLayer { alpha = bottomAlpha * (1f - sheetFrac) * (1f - (progress * 3f).coerceAtMost(1f)) * ((t.value - 0.5f) * 2f).coerceIn(0f, 1f) },
           ) {
               if (s.loadingVisible) {
@@ -598,9 +593,6 @@ fun ViewerScreen(s: ViewerState, a: ViewerActions) {
                   }
               }
               ViewerStrip(s.items, s.index, s.stripTick, a.onJump)
-              if (panel != null && portrait) {
-                  Box(Modifier.padding(top = 12.dp)) { ViewerPanel(panel, { settleSheet(true) }, a.onSelect, a.onDownload) }
-              }
           }
       }
       // the details sheet: it comes up from the bottom edge under the finger, the picture moving up above it; a drag
