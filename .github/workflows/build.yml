@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -30,8 +30,15 @@ jobs:
       - name: Compila l'APK debug
         run: ./gradlew --console=plain :app:assembleDebug
 
-      - uses: actions/upload-artifact@v4
+      # Branch e commit nel nome del file: con archive: false l'artifact è l'APK stesso, non uno zip.
+      - name: Rinomina l'APK
+        run: |
+          branch="${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/fuji-transfer-${branch//\//-}-${GITHUB_SHA::7}.apk"
+
+      - uses: actions/upload-artifact@v7
         with:
-          name: fuji-transfer-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          path: dist/*.apk
+          archive: false
           if-no-files-found: error
