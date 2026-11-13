@@ -598,7 +598,6 @@ class TransferService : Service() {
         prefs.edit().putString(PREF_PAIRING, pairing.serialize()).apply()
         TransferState.publish()
         launchAndJoin(link, pairing.red)
-        link.relaxPriority()
         phase("rete della camera collegata")
         return wifiConnector(bluetoothHandoff = true)
     }
@@ -1790,7 +1789,9 @@ class TransferService : Service() {
     // ------------------------------------------------------------------ lifecycle helpers
 
     private fun disconnect() {
+        val wasOnWifi = engine != null && wifiNetwork != null
         closeSessionFirst()
+        if (wasOnWifi) tellCameraUserStopped()
         teardown()
         TransferState.objects = emptyList()
         TransferState.connected = false
@@ -1804,15 +1805,33 @@ class TransferService : Service() {
      * On "Disconnetti": CloseSession to the camera while its Wi-Fi is still there, then the rest of the teardown.
      * 4 Nov, 13:58:50: the network was released first, CloseSession failed (connection abort), and 11 s later the
      * phone could not join the camera's Wi-Fi again (rejected 8 times); at 13:46:55 CloseSession went through.
-     * At most 1.5 s: a command still in flight must not hold the teardown up (the network going away ends it).
+     * CloseSession waits for the command in flight (a 2 MiB block, a preview). If that takes more than 1.5 s, the
+     * socket is closed under it while the camera's network is still up: before, the network went first and the
+     * socket's close never reached the camera, which then kept its connection screen for 1–2 minutes (its own
+     * timeout), while XApp's never stays.
      */
     private fun closeSessionFirst() {
         val eng = engine ?: return
         val t = Thread({ eng.close() }, "fuji-close")
         t.start()
         t.join(1500)
-        DebugLog.detail(if (t.isAlive) "CloseSession non completato in 1,5 s: lascio comunque la rete"
-            else "sessione chiusa con la camera prima di lasciare la sua rete")
+        if (!t.isAlive) {
+            DebugLog.detail("sessione chiusa con la camera prima di lasciare la sua rete")
+            return
+        }
+        eng.abort()
+        t.join(500)
+        Thread.sleep(200) // lets the close go out before Android drops the camera's network
+        DebugLog.add("CloseSession non completato in 1,5 s: chiuso il socket con la rete ancora attiva")
+    }
+
+    /** Over the Bluetooth link still open, as XApp does when the person stops; at most 2 s. */
+    private fun tellCameraUserStopped() {
+        val link = ble ?: return
+        val red = blePairing?.red ?: return
+        val t = Thread({ FujiBle.notifyUserStop(link, red, bleLog) }, "fuji-ble-stop")
+        t.start()
+        t.join(2000)
     }
 
     private fun teardown() {

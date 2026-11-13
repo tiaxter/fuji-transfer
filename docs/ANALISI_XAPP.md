@@ -11,7 +11,8 @@ Le affermazioni sono lette dal codice; nulla è stato provato su una camera real
 
 ## Protocollo Wi-Fi (verificato nel codice nativo)
 - Camera a 192.168.0.1. Porte (enum `SOCKET_PORT_NO` in `ControlFFIR`): 55740 `PORT_BASE_SOCK` (comandi),
-  55741 `PORT_THROUGH_SOCK` (live view), 55742 `PORT_EVENT_SOCK` (eventi). **Per l'import delle foto XApp apre solo
+  55741 eventi, 55742 live view (così nel nativo, `MngPTP::OpenEvent`/`OpenThroughPicture`; l'enum Java li
+  chiama al contrario `PORT_THROUGH_SOCK`/`PORT_EVENT_SOCK`, ma conta il numero di porta). **Per l'import delle foto XApp apre solo
   55740**: le altre due le apre `InitiateOpenCapture` (scatto remoto / live view), quindi per scaricare basta un socket.
 - Handshake PTP/IP: richiesta di 82 byte (0x52), ack da 68 byte (0x44), rifiuto da 12 byte. Il pacchetto di init è
   costruito da un template dentro `libFTLPTPIP.so` (`MngPTP::Open`): len=82, type=1, magic=0x8f53e4f2, poi
@@ -95,6 +96,7 @@ app, e idealmente il log dell'app originale in un caso di errore, direbbe se è 
 - Miniature: GetThumb (0x100A) su USB, Fuji 0x9055 su Wi-Fi (un parametro, l'handle, come GetThumb).
 
 ## Da fare
+- Metadati e dimensioni per la galleria senza leggere foto per foto: prove da fare in `docs/METADATI_E_DIMENSIONI.md`.
 - Anteprima grande in Wi-Fi come XApp (immagine ricompressa dalla camera), non solo la miniatura.
 - Decodificare il formato di 0x9054 e dei comandi di ricerca (0x9050–0x9053) se si vuole filtrare per data.
 - Verificare 0x9056 e il tetto dei 4 GiB su una camera reale con un video lungo.

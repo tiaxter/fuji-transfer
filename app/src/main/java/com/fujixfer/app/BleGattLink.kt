@@ -126,11 +126,10 @@ class BleGattLink(private val context: Context, private val device: BluetoothDev
             ?: throw IOException("Impossibile aprire la connessione Bluetooth")
         gatt = g
         await(connected, timeoutMs, "Camera non raggiungibile via Bluetooth")
-        // Shorter connection interval while setting up: the MTU, the services and the dozen GATT requests up to the
-        // Wi-Fi credentials go one after the other, each waiting for the next connection event. Back to balanced
-        // with relaxPriority() once the camera network is up (the link then only carries notifications).
-        val high = g.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
-        DebugLog.detail("BLE priorità alta: ${if (high) "chiesta" else "rifiutata dal telefono"}")
+        // XApp's order: MTU, then services, no connection priority. With CONNECTION_PRIORITY_HIGH requested here
+        // (4 Nov to 13 Nov) the MTU answer came ~4.5 s after the link on every X-M5 connection, and the GATT requests
+        // that followed still took 50-60 ms each, so the shorter interval gave nothing.
+        val t0 = System.currentTimeMillis()
         if (g.requestMtu(FujiBle.MTU)) {
             try {
                 mtu.get(5, TimeUnit.SECONDS)
@@ -138,6 +137,7 @@ class BleGattLink(private val context: Context, private val device: BluetoothDev
                 // keep the default MTU
             }
         }
+        DebugLog.detail("BLE MTU in ${System.currentTimeMillis() - t0} ms")
         if (!g.discoverServices()) throw IOException("Ricerca dei servizi Bluetooth non avviata")
         val status = await(discovered, 15_000, "La camera non ha elencato i servizi Bluetooth")
         if (status != BluetoothGatt.GATT_SUCCESS) throw GattLink.GattException("Servizi Bluetooth", status)
@@ -273,7 +273,7 @@ class BleGattLink(private val context: Context, private val device: BluetoothDev
         }
     }
 
-    /** Back to the balanced connection interval after the set-up (see connect) or after a download. */
+    /** Back to the balanced connection interval (the default) after lowPower(), e.g. after a download. */
     fun relaxPriority() = setPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
 
     /**

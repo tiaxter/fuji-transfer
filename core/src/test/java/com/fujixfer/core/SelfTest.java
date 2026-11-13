@@ -486,8 +486,8 @@ public final class SelfTest {
         int ex = order.indexOf(FujiBle.CH_IMAGE_TRANSFER_SETTING_EX);
         int utc = order.indexOf(FujiBle.CH_UTC_AND_TIMEZONE);
         int launch = order.indexOf(FujiBle.CH_FUNCTION_LAUNCH_REQUEST);
-        check("image transfer setting ex <- 01, then UTC, then the Wi-Fi request", ex >= 0 && utc > ex && launch > utc
-                && Arrays.equals(cam.writes.get(ex).value, new byte[]{1}));
+        check("UTC first, then image transfer setting ex <- 01, then the Wi-Fi request", utc >= 0 && ex > utc
+                && launch > ex && Arrays.equals(cam.writes.get(ex).value, new byte[]{1}));
         check("subscribed to transfer state and camera vital state like XApp",
                 cam.subscribed.contains(FujiBle.CH_TRANSFER_STATE) && cam.subscribed.contains(FujiBle.CH_CAMERA_VITAL_STATE)
                         && cam.subscribed.indexOf(FujiBle.CH_AP_STATE) == 0);

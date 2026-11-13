@@ -55,6 +55,8 @@ public final class FujiBle {
     public static final String CH_SSID = "BF6DC9CF-3606-4EC9-A4C8-D77576E93EA4";
     public static final String CH_PASSPHRASE = "E809256A-915C-4967-92E8-53B7D4CAD213";
     public static final String CH_MAC_ADDRESS = "49A12959-DFAA-4EB2-89CE-62548AD948F3";
+    public static final String CH_DISCONNECTED_REASON = "7EDE1988-B27E-43FC-80F4-6FEC994F0552";
+    public static final String CH_IMAGE_RECEIVE_STATE = "A80BE3F8-8BCB-4ADD-A725-170B7A53ADC9";
 
     /** FunctionLaunchRequestType: ImportImage=1, InCameraViewing=3 (browse from the phone), RemoteShooting=4. */
     // Characteristics XApp subscribes to / writes before the Wi-Fi request (seen in the phone's Bluetooth
@@ -115,6 +117,8 @@ public final class FujiBle {
             case CH_DEVICE_NAME:
             case CH_APP_INFO:
             case CH_IDENTIFICATION_NUMBER:
+            case CH_DISCONNECTED_REASON:
+            case CH_IMAGE_RECEIVE_STATE:
                 return red ? SVC_CONNECTED_DEVICE_INFORMATION_RED : SVC_CONNECTED_DEVICE_INFORMATION;
             default:
                 throw new IllegalArgumentException(ch);
@@ -556,14 +560,20 @@ public final class FujiBle {
     }
 
     /**
-     * What XApp does on the Bluetooth link between the app-info write and the Wi-Fi request, in the same
-     * order (from the phone's Bluetooth stack log of a working XApp import on an X-M5): subscribe to the
-     * camera's state characteristics, set "image transfer setting ex" to 1, subscribe to the setting
-     * characteristics, send UTC time and time zone. Without these the camera starts its access point but
+     * What XApp does on the Bluetooth link between the app-info write and the Wi-Fi request (from the phone's
+     * Bluetooth stack log of a working XApp import on an X-M5): subscribe to the camera's state characteristics,
+     * set "image transfer setting ex" to 1, subscribe to the setting characteristics, send UTC time and time zone;
+     * same order except the time, sent first (see below). Without these the camera starts its access point but
      * never answers on Wi-Fi. Every step is best effort: a missing characteristic is skipped.
      */
     static void prepareLikeXApp(GattLink g, boolean red, Log log) {
         String startup = red ? SVC_STARTUP_INFORMATION_RED : SVC_STARTUP_INFORMATION;
+        // The time first, not last as in XApp's order: right after the link the X-M5 asks for date and position
+        // (F9150137 / AD06C7B7 = 1) and answers the Wi-Fi request with "busy for a moment" for ~1.2-1.5 s; on the
+        // connections where it did not ask, the request went through at once (log of 11-13 Nov). Written first,
+        // the camera handles it during the subscriptions below.
+        writeQuietly(g, SVC_CURRENT_TIME, CH_UTC_AND_TIMEZONE, utcAndTimeZone(System.currentTimeMillis(),
+                java.util.TimeZone.getDefault()), "ora UTC e fuso", log);
         subscribe(g, SVC_CAMERA_STATE, CH_AP_STATE, "stato Wi-Fi", log);
         subscribe(g, SVC_CAMERA_STATE, CH_TRANSFER_STATE, "stato trasferimento", log);
         subscribe(g, SVC_CAMERA_STATE, CH_DATE_SYNC_STATE, "sincronizzazione data", log);
@@ -577,8 +587,6 @@ public final class FujiBle {
         subscribe(g, SVC_CAMERA_SETTING, CH_LOCATION_SYNC_SETTING, "impostazione posizione", log);
         subscribe(g, SVC_CAMERA_SETTING, CH_IMAGE_RESIZE_SETTING, "ridimensionamento immagini", log);
         subscribe(g, SVC_CAMERA_SETTING, CH_LOCATION_SYNC_CYCLE, "intervallo posizione", log);
-        writeQuietly(g, SVC_CURRENT_TIME, CH_UTC_AND_TIMEZONE, utcAndTimeZone(System.currentTimeMillis(),
-                java.util.TimeZone.getDefault()), "ora UTC e fuso", log);
     }
 
     /** XApp's setChUTCAndTimeZone: UTC y(16) m d h min s, offset as hhmm-ish int32 (+1:30 = 150), DST flag. */
@@ -600,6 +608,17 @@ public final class FujiBle {
         Ptp.putU32(b, 7, offset & 0xFFFFFFFFL);
         b[11] = (byte) (tz.inDaylightTime(new java.util.Date(nowMs)) ? 0 : 1); // as decompiled from XApp
         return b;
+    }
+
+    /**
+     * XApp's setDisconnectedReason when the person stops: reason UserStop (u16 1), then "phone receiving images"
+     * off. Best effort, before the Bluetooth link closes.
+     */
+    public static void notifyUserStop(GattLink g, boolean red, Log log) {
+        writeQuietly(g, serviceOf(CH_DISCONNECTED_REASON, red), CH_DISCONNECTED_REASON, new byte[]{1, 0},
+                "motivo disconnessione (utente)", log);
+        writeQuietly(g, serviceOf(CH_IMAGE_RECEIVE_STATE, red), CH_IMAGE_RECEIVE_STATE, new byte[]{0},
+                "ricezione immagini spenta", log);
     }
 
     private static void subscribe(GattLink g, String svc, String ch, String what, Log log) {

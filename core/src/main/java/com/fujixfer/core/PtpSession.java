@@ -506,6 +506,14 @@ public final class PtpSession implements Closeable {
         link.close();
     }
 
+    /**
+     * Closes the link without waiting for the transaction in flight (which holds the lock): the blocked read fails at
+     * once and the camera gets the socket's close, so it ends the session instead of waiting for its own timeout.
+     */
+    public void abortLink() {
+        link.close();
+    }
+
     // ------------------------------------------------------------------ dataset helpers
 
     static List<Long> parseU32Array(byte[] d) throws IOException {

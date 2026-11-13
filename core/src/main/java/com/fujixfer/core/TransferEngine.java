@@ -58,7 +58,7 @@ public final class TransferEngine {
 
     private final Connector connector;
     private final Options options;
-    private PtpSession session;
+    private volatile PtpSession session;
     private boolean partialSupported = true;
     private boolean extThumbSupported = true;
     /** Incremented for every new session: handles from an older listing may no longer be valid. */
@@ -135,6 +135,12 @@ public final class TransferEngine {
 
     public synchronized void close() {
         dropSession();
+    }
+
+    /** Closes the socket under a command still running, without the lock close() waits for. */
+    public void abort() {
+        PtpSession s = session;
+        if (s != null) s.abortLink();
     }
 
     private void dropSession() {
