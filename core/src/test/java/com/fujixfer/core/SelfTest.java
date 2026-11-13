@@ -504,9 +504,10 @@ public final class SelfTest {
             List<String> log = new java.util.ArrayList<>();
             MetaProbe.run(eng, objs, log::add);
             String all = String.join("\n", log);
-            check("probe runs to the end on a camera without 0x9805", all.contains("0x9054 su 2 file in fila")
-                    && all.contains("0x9805 per tutti saltato") && all.contains("prova metadati: finita"));
-            check("probe logs the real size to compare", all.contains("dimensione vera DSCF0001.JPG = " + jpg.length + " B"));
+            check("probe runs to the end on a camera without 0x9805", all.contains("0x9805 dimensione su 2 file in fila: 0 OK")
+                    && all.contains("prova metadati: finita"));
+            check("probe logs the real size to compare", all.contains("DSCF0001.JPG elenco ")
+                    && all.contains("0x9805 -1 B, vera " + jpg.length + " B"));
             check("session still usable after the probe", eng.download(objs.get(1), tmp(), null).length() == jpg.length);
         }
     }

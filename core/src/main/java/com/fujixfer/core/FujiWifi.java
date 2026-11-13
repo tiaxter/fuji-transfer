@@ -480,15 +480,6 @@ public final class FujiWifi {
         else quiet(() -> s.setProp16(DPC_CORRECT_FILE_SIZE, 0));
     }
 
-    /** The next answers may take up to ms instead of the normal read timeout (see FujiTcpLink.expectSlowReply). */
-    public void expectSlowReply(long ms) {
-        link.expectSlowReply(ms, null);
-    }
-
-    public void endSlowReply() {
-        link.endSlowReply();
-    }
-
     /** True when the session runs like XApp (ClientState 20, Wi-Fi started over Bluetooth). */
     public boolean isXApp() {
         return xapp;

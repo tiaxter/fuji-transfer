@@ -8,20 +8,20 @@ import java.util.function.Consumer;
 
 /**
  * One-off probes of docs/METADATI_E_DIMENSIONI.md, run once after the listing on Fuji Wi-Fi: can the gallery get
- * sizes (and orientation, dates) without reading each file? Log only, nothing else uses the answers. Lightest
- * first: 0x9054 on a few files with the raw bytes, 0x9054 on 20 files in a row for the time, the real sizes of
- * the same few files to compare, MTP GetObjectPropList 0x9805 on one file; last 0x9805 for all objects, which
- * the X-M5 did not answer within the 10 s read timeout on 13 Nov (now given 60 s). Stops at the first lost
- * connection.
+ * sizes (and orientation, dates) without reading each file? Log only, nothing else uses the answers.
+ * Second round (13 Nov, 21:59, X-M5): 0x9805 on one handle answered in 14 ms with the real size of a RAF, 0x9805
+ * for all objects got no answer in 60 s, 0x9054 refused the listing's handles (InvalidObjectHandle) although it
+ * accepts XApp's 0x10000001. Now: 0x9805 size of the sample (JPGs included, whose gallery size is fake) against
+ * the real one, 0x9805 on 50 files in a row for the time, 0x9054 with 0x10000000 + handle.
  */
 public final class MetaProbe {
     static final int OC_GET_OBJECT_PROP_LIST = 0x9805;
-    static final long ALL_OBJECTS = 0xFFFFFFFFL;
     static final long ALL_PROPS = 0xFFFFFFFFL;
-    /** Files whose 0x9054 bytes are logged and whose real size is read to compare. */
-    static final int SAMPLE = 3;
-    static final int TIMED = 20;
-    static final long ALL_OBJECTS_WAIT_MS = 60_000;
+    /** XApp's 0x9054 handle for the first file; the listing's handles plus this base are tried. */
+    static final long EXT_HANDLE_BASE = 0x10000000L;
+    /** Files compared with their real size, at least one JPG among them. */
+    static final int SAMPLE = 4;
+    static final int TIMED = 50;
 
     private MetaProbe() {
     }
@@ -30,48 +30,35 @@ public final class MetaProbe {
         if (objects.isEmpty()) return;
         try {
             PtpSession s = eng.session();
-            FujiWifi fuji = s.fujiWifi();
-            if (fuji == null) return;
+            if (s.fujiWifi() == null) return;
             log.accept("prova metadati: " + objects.size() + " file, modo galleria");
-            List<ObjectInfo> sample = new ArrayList<>(objects.subList(0, Math.min(SAMPLE, objects.size())));
-            for (ObjectInfo o : sample) {
-                Timed t = call(s, Ptp.OC_FUJI_GET_EXT_OBJECT_INFO, o.handle);
-                log.accept("prova metadati: 0x9054 " + o.filename + " (handle " + o.handle + ", elenco " + o.size + " B) -> "
-                        + Ptp.rcName(t.code) + " in " + t.ms + " ms, " + t.data.length + " B: " + hex(t.data, 256));
-                List<String> strings = strings(t.data);
-                if (!strings.isEmpty()) log.accept("prova metadati: 0x9054 " + o.filename + " stringhe " + strings);
-            }
+            List<ObjectInfo> sample = sample(objects);
+            long[] viaList = new long[sample.size()];
+            for (int i = 0; i < sample.size(); i++) viaList[i] = sizeViaPropList(s, sample.get(i).handle);
             int n = Math.min(TIMED, objects.size());
             long t0 = System.nanoTime();
             int ok = 0;
             long slowest = 0;
             for (int i = 0; i < n; i++) {
-                Timed t = call(s, Ptp.OC_FUJI_GET_EXT_OBJECT_INFO, objects.get(i).handle);
-                if (t.code == Ptp.RC_OK) ok++;
-                slowest = Math.max(slowest, t.ms);
-            }
-            log.accept("prova metadati: 0x9054 su " + n + " file in fila: " + ok + " OK, "
-                    + (System.nanoTime() - t0) / 1_000_000 / n + " ms l'uno, il più lento " + slowest + " ms");
-            for (ObjectInfo o : sample) {
                 long t1 = System.nanoTime();
-                ObjectInfo real = eng.withRealSize(o);
-                log.accept("prova metadati: dimensione vera " + o.filename + " = " + real.size + " B ("
-                        + (System.nanoTime() - t1) / 1_000_000 + " ms)");
+                if (sizeViaPropList(s, objects.get(i).handle) >= 0) ok++;
+                slowest = Math.max(slowest, (System.nanoTime() - t1) / 1_000_000);
             }
-            s = eng.session(); // withRealSize may have reconnected
-            fuji = s.fujiWifi();
-            ObjectInfo first = sample.get(0);
-            boolean one = propList(s, first.handle, Ptp.OPC_OBJECT_SIZE, "dimensione di " + first.filename, log);
-            propList(s, first.handle, ALL_PROPS, "tutte le proprietà di " + first.filename, log);
-            if (one && fuji != null) {
-                fuji.expectSlowReply(ALL_OBJECTS_WAIT_MS);
-                try {
-                    propList(s, ALL_OBJECTS, Ptp.OPC_OBJECT_SIZE, "dimensioni di tutti (attesa fino a 60 s)", log);
-                } finally {
-                    fuji.endSlowReply();
-                }
-            } else {
-                log.accept("prova metadati: 0x9805 per tutti saltato (rifiutato già su un file)");
+            log.accept("prova metadati: 0x9805 dimensione su " + n + " file in fila: " + ok + " OK, "
+                    + (System.nanoTime() - t0) / 1_000_000 / n + " ms l'uno, il più lento " + slowest + " ms");
+            for (int i = 0; i < sample.size(); i++) {
+                ObjectInfo o = sample.get(i);
+                Timed t = call(s, Ptp.OC_FUJI_GET_EXT_OBJECT_INFO, EXT_HANDLE_BASE + o.handle);
+                log.accept("prova metadati: 0x9054 " + o.filename + " (handle 0x" + Long.toHexString(EXT_HANDLE_BASE + o.handle)
+                        + ") -> " + Ptp.rcName(t.code) + " in " + t.ms + " ms, " + t.data.length + " B: " + hex(t.data, 256));
+                List<String> strings = strings(t.data);
+                if (!strings.isEmpty()) log.accept("prova metadati: 0x9054 " + o.filename + " stringhe " + strings);
+            }
+            for (int i = 0; i < sample.size(); i++) {
+                ObjectInfo o = sample.get(i);
+                ObjectInfo real = eng.withRealSize(o);
+                log.accept("prova metadati: " + o.filename + " elenco " + o.size + " B, 0x9805 " + viaList[i] + " B, vera "
+                        + real.size + " B" + (viaList[i] == real.size ? " (0x9805 giusta)" : " (0x9805 DIVERSA)"));
             }
             log.accept("prova metadati: finita");
         } catch (IOException e) {
@@ -79,20 +66,28 @@ public final class MetaProbe {
         }
     }
 
-    /** 0x9805 {handle, format 0, property, group 0, depth 0}; true when the camera answered OK. */
-    private static boolean propList(PtpSession s, long handle, long prop, String what, Consumer<String> log)
-            throws IOException {
-        Timed t = call(s, OC_GET_OBJECT_PROP_LIST, handle, 0, prop, 0, 0);
-        StringBuilder b = new StringBuilder("prova metadati: 0x9805 " + what + " -> " + Ptp.rcName(t.code) + " in " + t.ms
-                + " ms, " + t.data.length + " B");
-        if (t.code == Ptp.RC_OK) {
-            List<String> items = new ArrayList<>();
-            long total = parsePropList(t.data, items, 8);
-            b.append(", ").append(total < 0 ? "non decodificata" : total + " elementi").append(" ").append(items)
-                    .append(" · inizio ").append(hex(t.data, 48));
+    /** The first files of the listing, plus the first JPG and the first RAF if they are not among them. */
+    static List<ObjectInfo> sample(List<ObjectInfo> objects) {
+        List<ObjectInfo> out = new ArrayList<>(objects.subList(0, Math.min(SAMPLE - 2, objects.size())));
+        for (String ext : new String[]{".JPG", ".RAF"}) {
+            for (ObjectInfo o : objects) {
+                if (o.filename.toUpperCase(java.util.Locale.ROOT).endsWith(ext)) {
+                    if (!out.contains(o)) out.add(o);
+                    break;
+                }
+            }
         }
-        log.accept(b.toString());
-        return t.code == Ptp.RC_OK;
+        return out;
+    }
+
+    /** ObjectSize from 0x9805 {handle, 0, 0xDC04, 0, 0}; -1 when refused or not parsed. */
+    private static long sizeViaPropList(PtpSession s, long handle) throws IOException {
+        Timed t = call(s, OC_GET_OBJECT_PROP_LIST, handle, 0, Ptp.OPC_OBJECT_SIZE, 0, 0);
+        if (t.code != Ptp.RC_OK || t.data.length < 4 || Ptp.u32(t.data, 0) < 1 || t.data.length < 16) return -1;
+        int type = Ptp.u16(t.data, 10);
+        if (type == 0x0008 && t.data.length >= 20) return unsigned(t.data, 12, 8);
+        if (type == 0x0006) return unsigned(t.data, 12, 4);
+        return -1;
     }
 
     private static final class Timed {

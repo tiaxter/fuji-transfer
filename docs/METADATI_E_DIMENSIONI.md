@@ -5,6 +5,18 @@ l'elenco (`PROBE_METADATA` in `TransferService`); i risultati sono nel log, righ
 quando si è deciso cosa usare.
 Fonte: decompilazione di XApp 2.7.6 (vedi `XAPP_PROTOCOLLO.md`) e il codice attuale di `core/`.
 
+## Risultati sulla X-M5 (13 novembre)
+| Prova | Risultato |
+|---|---|
+| 0x9805 {handle, 0, 0xDC04, 0, 0} su un file | OK in 14–199 ms, dimensione vera del RAF |
+| 0x9805 {handle, 0, 0xFFFFFFFF, 0, 0} su un file | OK in 14 ms, 14 proprietà: DC01 storage, DC02 formato, DC04 dimensione, DC07 nome, DC08 data, DC41 ID univoco, … |
+| 0x9805 {0xFFFFFFFF, …} per tutti i file | nessuna risposta né in 10 s né in 60 s; la connessione poi si riprende |
+| 0x9054 con gli handle dell'elenco (444, 445…) | InvalidObjectHandle; XApp usa 0x10000001 e la camera risponde OK |
+| Dimensioni nell'elenco in modo galleria | RAF già vere, JPG no (167 936 B contro 12 909 986 B) |
+
+Da verificare (terzo giro): 0x9805 dà la dimensione vera anche dei JPG? Tempo su 50 file di fila. 0x9054 con
+0x10000000 + handle.
+
 ## Situazione attuale
 - **EXIF** (simulazione pellicola, posizione, orientamento): `TransferEngine.readExif` legge i primi byte di ogni
   file (`exifAt`, GetPartialObject da offset 0; per i RAF anche il JPEG incluso). `TransferService` lo fa a gruppi
