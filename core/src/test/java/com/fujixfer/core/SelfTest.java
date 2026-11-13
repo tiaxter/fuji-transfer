@@ -478,21 +478,7 @@ public final class SelfTest {
     }
 
     static void metaProbe() throws Exception {
-        System.out.println("== metadata probe: 0x9805 / 0x9054 answers logged, real sizes compared, nothing breaks");
-        byte[] list = new byte[4 + 2 * 12];
-        Ptp.putU32(list, 0, 2);
-        Ptp.putU32(list, 4, 1);
-        Ptp.putU16(list, 8, Ptp.OPC_OBJECT_SIZE);
-        Ptp.putU16(list, 10, 0x0006);
-        Ptp.putU32(list, 12, 123456);
-        Ptp.putU32(list, 16, 2);
-        Ptp.putU16(list, 20, Ptp.OPC_OBJECT_SIZE);
-        Ptp.putU16(list, 22, 0x0006);
-        Ptp.putU32(list, 24, 789);
-        List<String> items = new java.util.ArrayList<>();
-        check("ObjectPropList parsed (2 sizes)", MetaProbe.parsePropList(list, items, 8) == 2
-                && items.get(0).equals("1:DC04=123456") && items.get(1).equals("2:DC04=789"));
-        check("truncated ObjectPropList -> -1", MetaProbe.parsePropList(Arrays.copyOf(list, 20), new java.util.ArrayList<>(), 8) == -1);
+        System.out.println("== metadata probe: 0x9054 answers logged, nothing breaks");
         byte[] str = {0, 4, 'A', 0, 'B', 0, 'C', 0, 0, 0, 9};
         check("PTP strings found in raw bytes", MetaProbe.strings(str).equals(List.of("@1 \"ABC\"")));
         try (FakeFujiCamera cam = new FakeFujiCamera()) {
@@ -504,10 +490,8 @@ public final class SelfTest {
             List<String> log = new java.util.ArrayList<>();
             MetaProbe.run(eng, objs, log::add);
             String all = String.join("\n", log);
-            check("probe runs to the end on a camera without 0x9805", all.contains("0x9805 dimensione su 2 file in fila: 0 OK")
-                    && all.contains("prova metadati: finita"));
-            check("probe logs the real size to compare", all.contains("DSCF0001.JPG elenco ")
-                    && all.contains("0x9805 -1 B, vera " + jpg.length + " B"));
+            check("probe runs to the end on a camera without 0x9054", all.contains("0x9054 0x10000001 -> ")
+                    && all.contains("0x9054 su 0x10000001..0x10000002: 0 OK") && all.contains("prova metadati: finita"));
             check("session still usable after the probe", eng.download(objs.get(1), tmp(), null).length() == jpg.length);
         }
     }
